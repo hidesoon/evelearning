@@ -43,6 +43,6 @@ Videos:
 
 ## Why not stay in station and keep safe?
 
-because station trading is learning much less,,, and much more Boring than hauling.
+because station trading is earning much less,,, and much more Boring than hauling.
 
-No help and no interaction with your friends, with your co.
+No help and no interaction with your friends or with your co.
