@@ -10,7 +10,7 @@ EVE is the best game for data science people, because CCP(game producer) develop
 
 Question is can we do something for the game data?  If we have the data, can we use them wisely?
 
-There are various data, and enabled diverse approach to use the data. Here we select one path that we think would be fun, useful, and not too hard to finish.
+There are various data, and enabled diverse approachs to use the data. Here we select one path that we think would be fun, useful, and not too hard to finish.
 
 ### Case study
 
