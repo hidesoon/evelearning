@@ -15,6 +15,14 @@ Videos:
 
 [Trading101 video](https://www.youtube.com/watch?v=vTAszc6zqWk)
 
+[EVE Fanfest 2016 - How To Make And Lose ISK in EVE](https://www.youtube.com/watch?v=W69TNTzWu5Q)
+
+[EVE Fanfest 2017 - Virtual Business in EVE Online](https://www.youtube.com/watch?v=X_zwfl2XqIE)
+
+[EVE Fanfest 2017 - More To Trading than 0.01](https://youtu.be/aZJhtHsd4Lk)
+
+
+
 另外强烈推荐船老板的这个视频
 
 [【船老板出品】《EVE星战前夜》商人助手讲堂：EVE经济体系与挂单派贸易商](https://www.bilibili.com/video/av19937474/)
@@ -38,5 +46,3 @@ Videos:
 because station trading is learning much less,,, and much more Boring than hauling.
 
 No help and no interaction with your friends, with your co.
-
-   
