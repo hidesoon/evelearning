@@ -1,14 +1,14 @@
 
 app/\.idea/
 
+app/drafts/
+
 app/venv/
 
 app/appkey\.txt
-
-app/tokens\.txt
 
 app/df_items\.csv
 
 app/df_trans_mega\.csv
 
-app/drafts/
+app/tokens\.txt
