@@ -2,15 +2,15 @@
 
 created: 2018-05-02
 
-last edit: 2018-05-17
+last edit: 2018-06-22
 
 ## Situation
 
-EVE is the best game for data science people, because CCP(game producer) developed a powerful and wide-open API for this game.
+EVE is the best game for data science people, because CCP(game producer) applied very fashion technology to share the data of this game.
 
 Question is can we do something for the game data?  If we have the data, can we use them wisely?
 
-There are various data, and enabled diverse approachs to use the data. Here we select one path that we think would be fun, useful, and not too hard to finish.
+There are various data, and enabled diverse approaches to use the data. Here we select one path that we think would be fun, useful, and not too hard to finish.
 
 ### Case study
 
@@ -22,13 +22,13 @@ After having these tools, maybe for [station trading](https://wiki.braveineve.co
 
 The major pain points are:
 
-- Data would be too big if cover multiple region
+- Data may be too big if cover multiple region ( *I start to doubt the size of data, can be quite tiny BS 20180622* )
 
-- The analysis is not accurate, because interregional hauling involves more complex background and rules   
+- The analysis is not accurate, because interregional hauling involves more complex background and rules   (*lack both of the software and the mindset*)
 
 What we want is to make a tool which can help you check the market state, make sure the item which you will hauling would make profit, and check the security state of the relevant routing, and plan the more safe or more short route for you to travel.
 
-All in one line, we want to develop a tool help you hauling between Jita and nullsec corporation centre (e.g. OSY). So everyone in the corporation would get better supply, and you will make more ISK, lost fewer ships.
+**All in one line, we want to develop a tool help you hauling between Jita and nullsec corporation centre (e.g. OSY). So everyone in the corporation would get better supply, and you will make more ISK, lost fewer ships.**
 
 ## Target
 
@@ -66,7 +66,20 @@ By join this project, you will:
 
 ## Result (Working in Progress)
 
-current I have done some benchmarking work, and I have experienced the station trading for a while
+2018-05-17:  current I have done some benchmarking work, and I have experienced the station trading for a while
+
+2018-06-22:
+- Put hands on coding (Python)
+- Already applied [EsiPy](https://kyria.github.io/EsiPy/) to collect the data from ESI, also conduct the SSO authentication process
+- Prepared MySQL,,, could be overkill. Up to now, I haven't found the enough reason to use MySQL,,, (.csv, .txt could manage this size of data) maybe in future if I found a case that have to store massive data I will back to SQL.
+- Using [Pandas](https://pandas.pydata.org/) dataframe to operate the data
+- Finish the analysis process for chars' transaction history
+
+
+Nest steps:
+- analysis orders in one station
+- analysis orders in multiple station
+- find insight for hauling
 
 ## Team Up
 
@@ -81,3 +94,20 @@ Prefer have some tech background of web dev, data science
 ### How to join us
 
 contact `hidesoon@gmail.com`
+
+
+
+# How to use this tool
+1. [SSO Login using EsiPy](https://kyria.github.io/EsiPy/examples/sso_login_esipy/)
+  - APP key:
+  you need go to CCP official developer space to create the API key for your application
+  (you can use mine for this app,,,, if you need)
+  Write your app key as `appkey.txt`
+  - SSO token:
+  this must be yours,,, SSO key can access all data from you character(s)
+  Write the SSO token as `tokens.txt`
+
+  2. Load the main.py
+  (remember to call the functions )
+
+  3. Run trans_anal.py (very sexy name, I know)
