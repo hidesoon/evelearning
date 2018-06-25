@@ -12,3 +12,5 @@ app/df_items\.csv
 app/df_trans_mega\.csv
 
 app/tokens\.txt
+
+app/df_trans_daily\.csv

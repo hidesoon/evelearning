@@ -58,41 +58,6 @@ for item in NonTrading_items:
     rr2, cc2 = df_filted.shape
     print('removed {} rows for NonTrading item {}'.format(rr1 - rr2, item))
 
-# %% merge the data
-
-# api_info = security.verify()
-# my_id=api_info['CharacterID']
-#
-# df1=pd.read_csv('get_characters_character_id_wallet_transactions_20180618024810.csv')
-# df2=pd.read_csv('get_characters_character_id_wallet_transactions_20180618111742.csv')
-# df3=pd.read_csv('get_characters_character_id_wallet_transactions_20180619013717.csv')
-# df4=pd.read_csv('get_characters_character_id_wallet_transactions_20180619104803.csv')
-# df4=pd.read_csv('get_characters_character_id_wallet_transactions_20180619223346.csv')
-#
-# result = pd.concat([df1, df2,df3,df4], ignore_index=True)
-#
-#
-# result=result[['client_id', 'date', 'is_buy', 'is_personal',
-#        'journal_ref_id', 'location_id', 'quantity', 'transaction_id',
-#        'type_id', 'unit_price']]
-#
-# result=result.drop_duplicates(subset=['client_id', 'date', 'is_buy', 'is_personal',
-#        'journal_ref_id', 'location_id', 'quantity', 'transaction_id',
-#        'type_id', 'unit_price'])
-#
-# result=result.set_index(['transaction_id','journal_ref_id'])
-# result=result.sort_index()
-#
-# # take out my stupid mistake
-#
-# result=result[result['client_id']!=my_id]
-#
-#
-# result.to_csv('df_trans_mega.csv')
-
-
-# need remove the selftrans 2113992876
-
 
 # %% ISK per day
 result = df_filted
@@ -121,6 +86,7 @@ for index, row in result.iterrows():
 
     if the_day not in list_days:
         list_days.append(the_day)
+
         # print(the_day)
         # print(sum_sell)
         # print(sum_buy)
@@ -133,7 +99,9 @@ for index, row in result.iterrows():
         i_row = i_row + 1
         the_old_day = the_day
 
-print("margin per day is {:,.2f} ISK".format(test['margin'].mean()))
+print("margin per day is {:,.2f} ISK".format(test['margin'][1:].mean()))
+
+test.to_csv('df_trans_daily.csv')
 
 # %% match names
 df_type_DB = pd.read_csv('df_itemDB.csv')
@@ -165,7 +133,7 @@ df_items = pd.DataFrame(
 for ind, item in enumerate(trading_items_list):
     name = df_type_DB.loc[df_type_DB['type_id'] == item, 'name'].values[0]
 
-    print(item, name)
+    # print(item, name)
 
     buy_total_qty = 0
     buy_ct = 0
@@ -305,10 +273,10 @@ for ind, item in enumerate(trading_items_list):
                                    'sell_mean_value': sell_mean_pic, 'sell_std': sell_std_pic, 'sell_pd': sell_pd,
                                    'margin_pu': margin_pu, 'profit_pu': profit_pu, 'profit_pd': profit_pd,
                                    'wip_pd': wip, 'rare': rare})
-    print('margin_pu = {:.2f}%'.format(margin_pu * 100))
-    print('profit_pu = {:,.2f}'.format(profit_pu))
-    print('profit_pd  = {:,.2f}'.format(profit_pd))
-    print('rare = {}'.format(rare))
-    print('wip = {:.2f}\n'.format(wip))
+    # print('margin_pu = {:.2f}%'.format(margin_pu * 100))
+    # print('profit_pu = {:,.2f}'.format(profit_pu))
+    # print('profit_pd  = {:,.2f}'.format(profit_pd))
+    # print('rare = {}'.format(rare))
+    # print('wip = {:.2f}\n'.format(wip))
 
 df_items.to_csv('df_items.csv')

@@ -111,3 +111,33 @@ contact `hidesoon@gmail.com`
   (remember to call the functions )
 
   3. Run trans_anal.py (very sexy name, I know)
+
+# Business questions
+Q:What is trading in EVE?
+A:
+- Station trading
+- hauling (interregional trading)
+
+Q: What item is good for trading?
+A: there is no fixed answer, you have to do market analysis
+
+
+Q: What is the work flow for trading?
+A:
+BUY IN
+1. Rise `Purchase Order`, pay `escrow`, `broker fee`, in `station`
+2. Seller fulfilled your `Purchase orders` by `volume`, you pay rest of item value to seller, pay `transaction tax`
+3. Item move in your `item hanger`, become stock/inventory or also called `Working in Progress (WIP)`
+
+SELL OUT
+4. Rise `Sell Order` ,pay  `broker fee`, in `station`
+5. Buyer fulfilled your `sell order` with `volume`, buyer pay you rest of item value, pay `transaction tax`
+
+
+Q: What is called `margin` or `markup`?
+
+Q: How many quantity of this item should I buy?
+
+Q: How many margin I can get from trading this item?
+
+Q: 
