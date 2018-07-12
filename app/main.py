@@ -115,12 +115,12 @@ def savelocal(res):
     return df
 
 
-if __name__ == "__main__":
-    tokens = check_token_available()
-    app_key = check_app_key()
-    appname = 'HIDETHEARTIST'
-    app, security, client = cynoup(app_key=app_key, appname=appname)
-    tokens, security = refresh_tokens(tokens, security)
+# if __name__ == "__main__":
+tokens = check_token_available()
+app_key = check_app_key()
+appname = 'HIDETHEARTIST'
+app, security, client = cynoup(app_key=app_key, appname=appname)
+tokens, security = refresh_tokens(tokens, security)
 
     # if is_tokens_expire(security):
     #     tokens, security = refresh_tokens(tokens, security)

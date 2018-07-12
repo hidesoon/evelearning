@@ -280,3 +280,4 @@ for ind, item in enumerate(trading_items_list):
     # print('wip = {:.2f}\n'.format(wip))
 
 df_items.to_csv('df_items.csv')
+print('Saved to csv')
