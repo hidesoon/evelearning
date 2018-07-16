@@ -118,7 +118,7 @@ def savelocal(res):
 # if __name__ == "__main__":
 tokens = check_token_available()
 app_key = check_app_key()
-appname = 'HIDETHEARTIST'
+appname = 'HIDETHEARTIST'  # please change to your own appname
 app, security, client = cynoup(app_key=app_key, appname=appname)
 tokens, security = refresh_tokens(tokens, security)
 

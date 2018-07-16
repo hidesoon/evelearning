@@ -11,6 +11,10 @@ except Exception as e:
     res = getdata(app, client, security, opcall=op, personal=1)
 
 # %% merge data
+
+
+# if totally new, just create a file
+
 df_now = pd.read_json(res.raw)
 
 df_now = df_now[['transaction_id', 'journal_ref_id', 'client_id', 'date', 'is_buy', 'is_personal',
@@ -57,7 +61,6 @@ for item in NonTrading_items:
     df_filted = df_filted[df_filted['type_id'] != NonTrading_items[item]]
     rr2, cc2 = df_filted.shape
     print('removed {} rows for NonTrading item {}'.format(rr1 - rr2, item))
-
 
 # %% ISK per day
 result = df_filted
@@ -234,7 +237,11 @@ for ind, item in enumerate(trading_items_list):
         sell_total_qty = df_item_sell.quantity.sum()
         sell_mean_pic = df_item_sell.unit_price.mean()
         sell_std_pic = df_item_sell.unit_price.std()
-        sell_pd = 24 / sell_ct
+        if sell_ct != 0:
+
+            sell_pd = 24 / sell_ct
+        else:
+            sell_pd = 0
         rare = rare - 1
     else:
         sell_ct = 0
