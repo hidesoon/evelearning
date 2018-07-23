@@ -11,6 +11,8 @@ from esipy import App
 from esipy import EsiClient
 from esipy import EsiSecurity
 
+# TODO: should design a function to check whether new items created in the server
+# TODO: Should have a better way rather than run everything in python console. GUI needed???
 
 def check_token_available():
     try:
