@@ -47,6 +47,7 @@ def cynoup(app_key, appname):
         app=app,
         redirect_uri=app_key['redirect_uri'],
         client_id=app_key['client_id'],
+        headers={'User-Agent': appname},
         secret_key=app_key['secret_key'],
     )
 
