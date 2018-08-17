@@ -102,9 +102,9 @@ def getdata(app, client, security, tokens, opcall, personal):
     # generate the operation tuple
     # the parameters given are the actual parameters the endpoint requires
     api_info = security.verify()
-    token_status= is_tokens_expire(security)
+    token_status = is_tokens_expire(security)
 
-    if token_status:
+    if token_status is True:
         tokens, security = refresh_tokens(tokens, security)
         print("Checked, token updated")
 
