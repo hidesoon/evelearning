@@ -2,7 +2,7 @@
 import datetime
 import json
 from pprint import pprint
-
+import time
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -11,6 +11,9 @@ from esipy import App
 from esipy import EsiClient
 from esipy import EsiSecurity
 
+
+# TODO: should design a function to check whether new items created in the server
+# TODO: Should have a better way rather than run everything in python console. GUI needed???
 
 def check_token_available():
     try:
@@ -45,6 +48,7 @@ def cynoup(app_key, appname):
         app=app,
         redirect_uri=app_key['redirect_uri'],
         client_id=app_key['client_id'],
+        headers={'User-Agent': appname},
         secret_key=app_key['secret_key'],
     )
 
@@ -67,7 +71,7 @@ def is_tokens_expire(security):
     dt_due = parser.parse(expiretime)
     due = dt_due - dt_now
     if dt_now < dt_due:
-        print("Not yet Experie" "\n")
+        # print("Token is alive" "\n")
         return False
     else:
         print("Warning: token already experied\n")
@@ -89,20 +93,46 @@ def refresh_tokens(tokens_old, security):
         json.dump(tokens, outfile)
 
     api_info = security.verify()
-    pprint(api_info)
+    print("Tokens refreshed\n ")
+    # pprint(api_info)
     return tokens, security
 
 
-def getdata(app, client, security, opcall, personal):
+def getdata(app, client, security, tokens, opcall, personal):
     # generate the operation tuple
     # the parameters given are the actual parameters the endpoint requires
     api_info = security.verify()
-    # 'get_characters_character_id_skillqueue'
-    if personal == 1:
+    token_status= is_tokens_expire(security)
+
+    if token_status:
+        tokens, security = refresh_tokens(tokens, security)
+        print("Checked, token updated")
+
+    if personal == 1:  # this specific to one toon
         op = app.op[opcall](character_id=api_info['CharacterID'])
     else:
         op = app.op[opcall]
-    res = client.request(op)
+    try:
+        res = client.request(op)
+
+    except Exception as e:
+        print('Error:' + str(e) + "\n")
+        nowstr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        with open('log.text', 'a') as the_file:
+            the_file.write(nowstr + ' Error: ' + str(res.status) + " " + str(e) + ' OP: ' + str(opcall) + "\n")
+
+    # check the error remain
+    e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
+    e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
+    e_status = res.status
+
+    # reaction to error
+    if e_remain < 50:
+        print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+    if e_status == 420:
+        time.sleep(e_reset)
+    # log the error message in local file
+    print('ESI status: {} you made {} error, remain: {}'.format(e_status, 100 - e_remain, e_remain))
     return res
 
 
@@ -118,16 +148,23 @@ def savelocal(res):
 # if __name__ == "__main__":
 tokens = check_token_available()
 app_key = check_app_key()
+
+# IMPORTANT INFORMATION
 appname = 'HIDETHEARTIST'  # please change to your own appname
 app, security, client = cynoup(app_key=app_key, appname=appname)
 tokens, security = refresh_tokens(tokens, security)
 
-    # if is_tokens_expire(security):
-    #     tokens, security = refresh_tokens(tokens, security)
-    #     print("token updated")
+test = 1  # if you want a quick test
 
-    # opcall = 'get_characters_character_id_skillqueue'
-    #
-    # res = getdata(app, client, security, opcall, personal=1)
+if test == 1:
+    opcall = 'get_characters_character_id_assets'
 
-    # df = savelocal(res)
+    res = getdata(app, client, security, tokens, opcall, personal=1)
+
+    df = savelocal(res)
+
+print("Cyno Up")
+
+# opcall = 'get_characters_character_id_contracts_contract_id_items'
+# op = app.op[opcall](character_id=api_info['CharacterID'],contract_id=135444996)
+# res = client.request(op)

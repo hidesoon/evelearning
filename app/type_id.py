@@ -1,4 +1,5 @@
 #%% get all page of type_id
+# TODO: T-tag can applied here
 
 op = app.op['get_universe_types'](page=1)
 response = client.request(op)
