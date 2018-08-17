@@ -1,14 +1,13 @@
 # %% get the data
-
 import pandas as pd
 
 op = 'get_characters_character_id_wallet_transactions'
 try:
-    res = getdata(app, client, security, opcall=op, personal=1)
+    res = getdata(app, client, security, tokens, opcall=op, personal=1)
 except Exception as e:
     print('Error:' + str(e) + "\n")
-    tokens, security = refresh_tokens(tokens, security)
-    res = getdata(app, client, security, opcall=op, personal=1)
+    # tokens, security = refresh_tokens(tokens, security)
+    # res = getdata(app, client, security, opcall=op, personal=1)
 
 # %% merge data
 
@@ -113,11 +112,18 @@ print("margin per day is {:,.2f} ISK".format(test['margin'][
 test.to_csv('df_trans_daily.csv')
 
 # %% match names
-df_type_DB = pd.read_csv('df_itemDB.csv')
-df_type_DB = df_type_DB[['capacity', 'description', 'group_id', 'mass', 'name',
-                         'packaged_volume', 'portion_size', 'published', 'radius', 'type_id',
-                         'volume', 'graphic_id', 'icon_id', 'dogma_attributes',
-                         'market_group_id', 'dogma_effects']]
+
+
+df_type_DB = pd.read_csv('df_itemDB.csv',
+                         header=0,
+                         usecols=['type_id', 'name'])
+
+result = pd.merge(result, df_type_DB, how='left', on='type_id')
+
+# df_type_DB = df_type_DB[['capacity', 'description', 'group_id', 'mass', 'name',
+#                          'packaged_volume', 'portion_size', 'published', 'radius', 'type_id',
+#                          'volume', 'graphic_id', 'icon_id', 'dogma_attributes',
+#                          'market_group_id', 'dogma_effects']]
 #
 # idkey=result.type_id.values
 #
@@ -167,9 +173,10 @@ for ind, item in enumerate(trading_items_list):
     # -10: buy 0-1, sell 0-1
     # -19: buy >1 , sell 0-1
 
-    df_item = result[result.type_id == item]  # select this specific item by type_id
+    # select this specific item by type_id
+    df_item = result[result.type_id == item]
 
-    # Buy
+    # if Buy
     df_item_buy = df_item[df_item.is_buy == True]
     rr, cc = df_item_buy.shape
 
@@ -187,9 +194,13 @@ for ind, item in enumerate(trading_items_list):
                 the_old_time = pd.to_datetime(row['date'])
                 continue
             if diff_trans is None:
-                diff_trans = (pd.to_datetime(row['date']) - the_old_time) / row['quantity']
-                the_old_time = pd.to_datetime(row['date'])
-                continue
+                if row['quantity'] == 0:
+                    print('error on 199')
+                    continue
+                else:
+                    diff_trans = (pd.to_datetime(row['date']) - the_old_time) / row['quantity']
+                    the_old_time = pd.to_datetime(row['date'])
+                    continue
 
             diff_trans = diff_trans + (pd.to_datetime(row['date']) - the_old_time) / row['quantity']
             the_old_time = pd.to_datetime(row['date'])
@@ -197,9 +208,12 @@ for ind, item in enumerate(trading_items_list):
 
         buy_ct = trans_ct / pd.Timedelta('1 hour')  # time unit is 1 hour
         buy_total_qty = df_item_buy.quantity.sum()
-        buy_mean_pic = df_item_buy.unit_price.mean()   # TODO: does mean() is the most suitable method?
+        buy_mean_pic = df_item_buy.unit_price.mean()  # TODO: does mean() is the most suitable method?
         buy_std_pic = df_item_buy.unit_price.std()
-        buy_pd = 24 / buy_ct
+        if buy_ct==0:
+            buy_pd=0
+        else:
+            buy_pd = 24 / buy_ct
         rare = rare + 1
 
     else:

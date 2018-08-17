@@ -16,3 +16,9 @@ app/tokens\.txt
 app/df_trans_daily\.csv
 
 app/df_trans_daily_edtied\.xlsx
+
+app/__pycache__/
+
+app/df_itemDB\.csv
+
+app/log\.text
