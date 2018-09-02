@@ -34,3 +34,5 @@ app/get_markets_structures_structure_id_20180827124253\.csv
 app/get_markets_structures_structure_id_20180827124842\.csv
 
 app/df_itemDB\.xlsx
+
+*.csv

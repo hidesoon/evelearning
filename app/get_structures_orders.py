@@ -1,20 +1,19 @@
+# %% get location list
+
+filename = 'dt_locations.csv'
+
+df_loc=pd.read_csv(filename).drop(columns='Unnamed: 0')
+
+
+df_structure=df_loc.loc[df_loc['pos_tpye'] == 'structure']
+
+list_structure=df_structure['location_id'].tolist()
+
+list_structure_accessable=list()
 # %% get data page 1
 
-structure_ids = [1028264838070, 1028264838070,
-                 1025397619473,
-                 1026570690251,
-                 1027863843813,
-                 1027336595449,
-                 1025944326215,
-                 1021100340572,
-                 1026996997751,
-                 1028062154239,
-                 1025918894838,
-                 1027581771222,
-                 1027890622173,
-                 ]
-# 1025989665653,1026810178482,1025944326215,1022901126459
-for item in structure_ids:
+
+for item in list_structure:
     print(item)
     op = app.op['get_markets_structures_structure_id'](structure_id=item)
     token_status = is_tokens_expire(security)
@@ -40,7 +39,7 @@ for item in structure_ids:
     # reaction to error
     if e_remain < 50:
         print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-    if e_status == 420:
+    # if e_status == 420:
         time.sleep(e_reset)
     if e_status == 403:
         print(res.raw)
@@ -53,6 +52,7 @@ for item in structure_ids:
     # get all pages
 
     if res.status == 200:
+        list_structure_accessable.append(item)
         number_of_page = res.header['X-Pages'][0]
 
         for page in range(1, number_of_page):
@@ -73,7 +73,7 @@ for item in structure_ids:
             e_status = res.status
 
             # reaction to error
-            if e_remain < 50:
+            if e_remain < 30:
                 print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
             if e_status == 420:
                 time.sleep(e_reset)
@@ -86,14 +86,37 @@ for item in structure_ids:
     try:
         dfs
     except NameError:
-        dfs=df
+        dfs = df
     else:
         dfs = dfs.append(df, ignore_index=True)
 
+# %% merge
+df_structure_accessable=df_loc.loc[df_loc['location_id'].isin(list_structure_accessable)]
 
-# %% save to csv
 
-opid = res._Response__op._Operation__operationId
-nowstr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-filename = opid + "_" + nowstr + ".csv"
+
+filename = 'dt_structure_orders_winter.csv'
 dfs.to_csv(filename, encoding='utf_8_sig')
+
+filename_history = 'dt_structure_orders_winter_rec.csv'
+
+try:
+    df_s_orders = pd.read_csv(filename_history)
+except Exception as e:
+    print('Error:' + str(e) + "\n")
+    dfs.to_csv(filename_history, encoding='utf_8_sig')
+    df_s_orders = dfs
+
+df_s_orders = df_s_orders.drop(columns='Unnamed: 0')
+
+rr0, cc0 = df_s_orders.shape
+
+df_merged = dfs.append(df_s_orders, ignore_index=True)
+
+df_merged = df_merged.drop_duplicates(subset=['order_id'])
+rr1, cc1 = df_merged.shape
+
+print('There are {} rows in store, added {} new rows'.format(rr0, rr1 - rr0))
+
+df_merged.to_csv(filename_history, encoding='utf_8_sig')
+print('structure order mega saved')

@@ -177,6 +177,12 @@ elif test == 3:
     op = app.op[opcall](region_id=10000061)
     res = client.request(op)
     df = savelocal(res)
+elif test==4:
+    opcall = 'get_characters_character_id_contracts'
+
+    res = getdata(app, client, security, tokens, opcall, personal=1)
+
+    df = savelocal(res)
 
 
 
