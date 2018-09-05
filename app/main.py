@@ -102,9 +102,9 @@ def getdata(app, client, security, tokens, opcall, personal):
     # generate the operation tuple
     # the parameters given are the actual parameters the endpoint requires
     api_info = security.verify()
-    token_status= is_tokens_expire(security)
+    token_status = is_tokens_expire(security)
 
-    if token_status:
+    if token_status is True:
         tokens, security = refresh_tokens(tokens, security)
         print("Checked, token updated")
 
@@ -137,11 +137,13 @@ def getdata(app, client, security, tokens, opcall, personal):
 
 
 def savelocal(res):
-    df = pd.read_json(res.raw)
+    # df = pd.read_json(res.raw)
+
+    df = pd.io.json.json_normalize(json.loads(res.raw))
     opid = res._Response__op._Operation__operationId
     nowstr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     filename = opid + "_" + nowstr + ".csv"
-    df.to_csv(filename)
+    df.to_csv(filename,encoding='utf_8_sig')
     return df
 
 
@@ -154,7 +156,7 @@ appname = 'HIDETHEARTIST'  # please change to your own appname
 app, security, client = cynoup(app_key=app_key, appname=appname)
 tokens, security = refresh_tokens(tokens, security)
 
-test = 1  # if you want a quick test
+test = 0  # if you want a quick test
 
 if test == 1:
     opcall = 'get_characters_character_id_assets'
@@ -162,9 +164,28 @@ if test == 1:
     res = getdata(app, client, security, tokens, opcall, personal=1)
 
     df = savelocal(res)
+elif test ==2:
+    opcall = 'get_universe_structures_structure_id'
+
+    op = app.op[opcall](structure_id=1027336595449)
+    res = client.request(op)
+    df = savelocal(res)
+
+elif test == 3:
+    opcall = 'get_contracts_public_region_id'
+
+    op = app.op[opcall](region_id=10000061)
+    res = client.request(op)
+    df = savelocal(res)
+elif test==4:
+    opcall = 'get_characters_character_id_contracts'
+
+    res = getdata(app, client, security, tokens, opcall, personal=1)
+
+    df = savelocal(res)
+
+
+
 
 print("Cyno Up")
 
-# opcall = 'get_characters_character_id_contracts_contract_id_items'
-# op = app.op[opcall](character_id=api_info['CharacterID'],contract_id=135444996)
-# res = client.request(op)

@@ -147,9 +147,11 @@ df_items = pd.DataFrame(
              'sell_mean_value', 'sell_std', 'sell_pd', 'margin_pu', 'profit_pu', 'profit_pd', 'wip_pd', 'rare'])
 
 for ind, item in enumerate(trading_items_list):
-    name = df_type_DB.loc[df_type_DB['type_id'] == item, 'name'].values[0]  # match name with type_id
+    name = df_type_DB.loc[df_type_DB['type_id'] == item, 'name']  # match name with type_id
+    name=name.values[0]
 
-    # print(item, name)
+
+    print(item, name)
 
     buy_total_qty = 0
     buy_ct = 0

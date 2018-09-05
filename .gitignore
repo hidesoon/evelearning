@@ -22,3 +22,17 @@ app/__pycache__/
 app/df_itemDB\.csv
 
 app/log\.text
+
+app/BackUp/
+
+app/eve_os\.db
+
+app/get_markets_region_id_orders_20180827164506\.csv
+
+app/get_markets_structures_structure_id_20180827124253\.csv
+
+app/get_markets_structures_structure_id_20180827124842\.csv
+
+app/df_itemDB\.xlsx
+
+*.csv
