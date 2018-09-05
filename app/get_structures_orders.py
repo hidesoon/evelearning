@@ -81,14 +81,14 @@ for item in list_structure:
             print('ESI status: {} you made {} error, remain: {}'.format(e_status, 100 - e_remain, e_remain))
 
             df1 = pd.read_json(res.raw)
-            df = df.append(df1, ignore_index=True)
+            df = df.append(df1, ignore_index=True,sort=False)
 
     try:
         dfs
     except NameError:
         dfs = df
     else:
-        dfs = dfs.append(df, ignore_index=True)
+        dfs = dfs.append(df, ignore_index=True,sort=False)
 
 # %% merge
 df_structure_accessable=df_loc.loc[df_loc['location_id'].isin(list_structure_accessable)]
@@ -111,7 +111,7 @@ df_s_orders = df_s_orders.drop(columns='Unnamed: 0')
 
 rr0, cc0 = df_s_orders.shape
 
-df_merged = dfs.append(df_s_orders, ignore_index=True)
+df_merged = dfs.append(df_s_orders, ignore_index=True,sort=False)
 
 df_merged = df_merged.drop_duplicates(subset=['order_id'])
 rr1, cc1 = df_merged.shape

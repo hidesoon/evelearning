@@ -105,9 +105,6 @@ print('add {} col, removed {} rows of duplicates'.format(cc0 - cc1, rr0 - rr1))
 # print('add {} col, removed {} rows out'.format(cc1 - cc2, rr1 - rr2))
 
 # %% save to csv
-
-opid = res._Response__op._Operation__operationId
-nowstr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 filename = 'df_regional_orders.csv'
 dfs.to_csv(filename, encoding='utf_8_sig')
 print('saved \n')

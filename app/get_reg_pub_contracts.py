@@ -125,9 +125,9 @@ for item in list_contract:
 
     except Exception as e:
         print('Error:' + str(e) + "\n")
-        nowstr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        with open('log.text', 'a') as the_file:
-            the_file.write(nowstr + ' Error: ' + str(res.status) + " " + str(e) + ' OP: ' + str(opcall) + "\n")
+        # nowstr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        # with open('log.text', 'a') as the_file:
+        #     the_file.write(nowstr + ' Error: ' + str(res.status) + " " + str(e) + ' OP: ' + str(opcall) + "\n")
 
     # check the error remain
     e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
@@ -164,10 +164,7 @@ for item in list_contract:
 
                 except Exception as e:
                     print('Error:' + str(e) + "\n")
-                    nowstr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                    with open('log.text', 'a') as the_file:
-                        the_file.write(
-                            nowstr + ' Error: ' + str(res.status) + " " + str(e) + ' OP: ' + str(opcall) + "\n")
+
 
                 # check the error remain
                 e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
@@ -175,9 +172,8 @@ for item in list_contract:
                 e_status = res.status
 
                 # reaction to error
-                if e_remain < 50:
+                if e_remain < 30:
                     print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                if e_status == 420:
                     time.sleep(e_reset)
                 if e_status != 200:
                     print(e_status, res.raw)
