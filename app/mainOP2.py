@@ -1,20 +1,21 @@
-import concurrent
-import time
-from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
-
-# import grequests as grequests
-from requests_futures.sessions import FuturesSession
-from termcolor import colored
-
-import psycopg2
-import json
-import pandas as pd
 import datetime
+import json
+import re
+import time
+from concurrent.futures import as_completed, ThreadPoolExecutor
 
+import pandas as pd
+import psycopg2
 import requests
+import sqlalchemy
 from esipy import App
 from esipy import EsiClient
 from esipy import EsiSecurity
+from requests_futures.sessions import FuturesSession
+from termcolor import colored
+
+
+# import grequests as grequests
 
 
 def cynoup(app_key, appname):
@@ -67,256 +68,126 @@ def countdown(new, old):
 
 
 def add_location(location_list):
-    # try:
-    #     del df
-    #     del dfs
-    #
-    # except:
-    #     pass
+
     stamp1 = datetime.datetime.now(datetime.timezone.utc)
-    conn, c = lighter()
-    sql = 'SELECT DISTINCT location_id FROM universe_stations_temp'
-    c.execute(sql)
-    exlist = [x[0] for x in c.fetchall()]
 
-    location_new = []
-    for x in location_list:
-        if x not in exlist:
-            location_new.append(x)
+    engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
 
-    if len(location_new) > 0:
 
-        print('\nfound new locations')
+    def_loco=pd.read_sql('universe_stations_temp', con=engine)
 
-        for location_id in location_new:
-            if location_id < 1000000000000:
-                endpoint = 'get_universe_stations_station_id'
+    def_loco.drop_duplicates(subset='location_id')
 
-                op = app.op[endpoint](station_id=location_id)
 
-                for i in range(0, 2):
-                    while True:
-                        try:
-                            res = client.request(op)
-                        except Exception as e:
-                            print('Error:' + str(e) + "\n")
 
-                            # check the error remain
-                            e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-                            e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-                            e_status = res.status
 
-                            # reaction to error
-                            if e_remain < 50:
-                                print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                                time.sleep(e_reset)
-                                print('sleep {}s'.format(e_reset))
-                            if e_status == 403:
-                                print(res.raw)
-                            continue
-                        break
-                if res.status == 200:
-                    df = pd.io.json.json_normalize(json.loads(res.raw))
-                    df['pos_tpye'] = 'station'
-                    df['location_id'] = location_id
-                else:
-                    print(res.status, res.raw)
-                    # check the error remain
-                    e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-                    e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-                    e_status = res.status
+    before=len(def_loco.index)
+    # print('\nfound {} new locations'.format(len(location_new)))
+    # chop the coming task
+    if before>0:
 
-                    # reaction to error
-                    if e_remain < 50:
-                        print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                        time.sleep(e_reset)
-                        print('sleep {}s'.format(e_reset))
+        def_loco=def_loco[~def_loco['location_id'].isin(location_list)]
+    # update the coming task
+    # anc = 0
+    try:
+        del def_loc
+    except:
+        pass
+    for location_id in location_list:
+        # anc+=1
+        # if anc>20:
+        #     break
+
+        if location_id < 1000000000000:
+            endpoint = 'get_universe_stations_station_id'
+
+            op = app.op[endpoint](station_id=location_id)
+            tag_station='station'
+
+        else:
+            endpoint = 'get_universe_structures_structure_id'
+
+            op = app.op[endpoint](structure_id=location_id)
+
+            tag_station = 'structure'
+
+        for i in range(0, 2):
+            while True:
+                try:
+                    res = client.request(op)
+                except Exception as e:
+                    print('Error:' + str(e) + "\n")
+                    print('Come here1')
+
                     continue
+                break
+        if res.status == 200:
+            df = pd.io.json.json_normalize(json.loads(res.raw))
+            df['pos_type'] = tag_station
+            df['location_id'] = location_id
+            df['ACL'] = True
+        else:
+            if res.status == 403:
+                df={}
+                df['location_id'] = location_id
+                df['pos_type'] = tag_station
+                df['ACL'] = False
+                df=pd.DataFrame.from_dict([df])
+                print('ACL updated')
             else:
-                endpoint = 'get_universe_structures_structure_id'
+                print('OMG')
 
-                op = app.op[endpoint](structure_id=location_id)
-                for i in range(0, 2):
-                    while True:
-                        try:
-                            res = client.request(op)
-                        except Exception as e:
-                            print('Error:' + str(e) + "\n")
+            # check the error remain
+            e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
+            e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
+            e_status = res.status
+            # reaction to error
+            if e_remain < 50:
+                print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+                time.sleep(e_reset)
+                print('sleep {}s'.format(e_reset))
 
-                            # check the error remain
-                            e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-                            e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-                            e_status = res.status
+        try:
+            def_loc
+        except NameError:
+            def_loc = df
+        try:
+            def_loc = def_loc.append(df, ignore_index=True, sort=False)
+        except Exception as e:
+            print('Error:' + str(e) + "\n")
+            print('Come here3')
 
-                            # reaction to error
-                            if e_remain < 50:
-                                print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                                time.sleep(e_reset)
-                                print('sleep {}s'.format(e_reset))
-                            if e_status == 403:
-                                print(res.raw)
-                            continue
-                        break
+    stamp2 = datetime.datetime.now(datetime.timezone.utc)
+    print('ESI done')
+    countdown(stamp2, stamp1)
 
-                if res.status == 200:
-                    df = pd.io.json.json_normalize(json.loads(res.raw))
-                    df['pos_tpye'] = 'structure'
-                    df['location_id'] = location_id
-                else:
-                    print(res.status, res.raw)
-                    # check the error remain
-                    e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-                    e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-                    e_status = res.status
+    #  read & write
 
-                    # reaction to error
-                    if e_remain < 50:
-                        print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                        time.sleep(e_reset)
-                        print('sleep {}s'.format(e_reset))
-                    continue
-            try:
-                dfs
-            except NameError:
-                dfs = df
-            else:
-                dfs = dfs.append(df, ignore_index=True, sort=False)
+    now = datetime.datetime.now(datetime.timezone.utc)
 
-        stamp2 = datetime.datetime.now(datetime.timezone.utc)
-        print('ESI done')
-        countdown(stamp2, stamp1)
+    def_loc['lastupdate']=now
 
-        #  read & write
 
-        dict = dfs.to_dict(orient='records')
+    if before>0:
 
-        conn, c = lighter()
+        def_loc = def_loc.append(def_loco, ignore_index=True, sort=False)
 
-        tablename = 'universe_stations_temp'
-        c.execute('select count(*) from %s' % (tablename))
-        before = c.fetchone()[0]
+    def_loc=def_loc.drop_duplicates(subset='location_id')
 
-        # c.execute('TRUNCATE only %s' % tablename)
-        # conn.commit()
-        now = datetime.datetime.now(datetime.timezone.utc)
+    # def_loc.drop_duplicates()
+    # print('hehe')
 
-        for row in dict:
+    def_loc.to_sql('universe_stations_temp', con=engine, index=False, if_exists='replace',dtype={'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
+                              })
 
-            try:
-                row['owner']
-            except:
-                row['owner'] = None
+    # print('baba')
 
-            try:
-                row['owner_id']
-            except:
-                row['owner_id'] = None
+    after = len(def_loc.index)
 
-            try:
-                row['max_dockable_ship_volume']
-            except:
-                row['max_dockable_ship_volume'] = None
-            try:
-                row['office_rental_cost']
-            except:
-                row['office_rental_cost'] = None
+    print(colored('{} new records in universe_stations_temp'.format(after - before), 'green'))
+    stamp3 = datetime.datetime.now(datetime.timezone.utc)
+    countdown(stamp3, stamp2)
 
-            try:
-                row['race_id']
-            except:
-                row['race_id'] = None
-
-            try:
-                row['reprocessing_efficiency']
-            except:
-                row['reprocessing_efficiency'] = None
-
-            try:
-                row['reprocessing_stations_take']
-            except:
-                row['reprocessing_stations_take'] = None
-
-            try:
-                row['services']
-            except:
-                row['services'] = None
-
-            # tag_date = 'date_issued'
-            # if isinstance(row[tag_date], datetime.date) is False:  # make sure it is datatime
-            #     row[tag_date] = datetime.datetime.strptime(row[tag_date], '%Y-%m-%dT%H:%M:%SZ').replace(
-            #         tzinfo=datetime.timezone.utc)
-
-            tag_int = ['owner', 'race_id', 'station_id', 'system_id', 'type_id', 'location_id', 'owner_id',
-                       'solar_system_id']
-            for it in tag_int:
-                if isinstance(row[it], int) is False:
-                    if row[it] > 0:
-                        row[it] = int(row[it])
-                    else:
-                        row[it] = int(0)
-
-            tag_jason = 'services'
-            if isinstance(row[tag_jason], list):
-                row[tag_jason] = json.dumps(row[tag_jason])
-            else:
-                row[tag_jason] = json.dumps('')
-
-            # tag_float = ['time_efficiency']
-            # if isinstance(row[tag_float], float) is False:
-            #     row[tag_float] = float(row[tag_float])
-
-            # tag_bool = 'is_blueprint_copy'
-            # if isinstance(row[tag_bool], bool) is False:
-            #     if row[tag_bool] > 0:
-            #         row[tag_bool] = True
-            #     else:
-            #         row[tag_bool] = False
-
-            row['position_x'] = row['position.x']
-            row.pop('position.x', None)
-
-            row['position_y'] = row['position.y']
-            row.pop('position.y', None)
-
-            row['position_z'] = row['position.z']
-            row.pop('position.z', None)
-
-            row['last_update'] = now
-            # print('')
-            # for item in row:
-            #     print(row[item])
-
-            tag_unique = 'location_id'
-
-            sql = '''INSERT INTO %s (%s) 
-                                   VALUES ( %%(%s)s ) 
-                                   ON CONFLICT (%s) 
-                                   DO UPDATE
-                                   SET 
-                                   last_update=EXCLUDED.last_update,
-                                   max_dockable_ship_volume=EXCLUDED.max_dockable_ship_volume,
-                                   name=EXCLUDED.name,
-                                   office_rental_cost=EXCLUDED.office_rental_cost,
-                                   owner=EXCLUDED.owner,
-                                   race_id=EXCLUDED.race_id,
-                                   reprocessing_efficiency=EXCLUDED.reprocessing_efficiency,
-                                   reprocessing_stations_take=EXCLUDED.reprocessing_stations_take,
-                                   services=EXCLUDED.services,
-                                   owner_id=EXCLUDED.owner_id
-                                       ''' % (tablename, ',  '.join(row), ')s, %('.join(row), tag_unique)
-            # print(sql)
-            c.execute(sql, row)
-
-        conn.commit()
-        c.execute('select count(*) from %s' % (tablename))
-        after = c.fetchone()[0]
-
-        print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
-        stamp3 = datetime.datetime.now(datetime.timezone.utc)
-        print('ESI done')
-        countdown(stamp3, stamp2)
-    else:
-        print('\nno new location')
 
 
 # %% connect DB
@@ -331,8 +202,9 @@ def lighter():
 
 
 conn, c = lighter()
+engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
 
-# %% check now
+## check now
 c.execute('SELECT time from sys_log order by id DESC limit 1')
 last = c.fetchone()[0]
 # last = datetime.datetime.strptime(last, '%Y-%m-%d %H:%M:%S.%f')
@@ -345,7 +217,7 @@ print('{} days {:.2} hours passed since last update\n'.format(past.days, past.se
 c.execute('insert into sys_log(time) values(%s)', (now,))
 conn.commit()  # update reading date
 
-# %% Prepare ESI
+## Prepare ESI
 
 # token
 c.execute('SELECT access_token, token_type, expires_in, refresh_token from acc_tokens')
@@ -389,7 +261,7 @@ countdown(stamp2, stamp1)
 # %% get all type_id
 get_type_id = True
 if get_type_id is True:
-    print(colored('\nget all type_id','green'))
+    print(colored('\nget all type_id', 'green'))
     stamp1 = datetime.datetime.now(datetime.timezone.utc)
 
     op = app.op['get_universe_types'](page=1)
@@ -402,7 +274,7 @@ if get_type_id is True:
 
         # now we know how many pages we want, let's prepare all the requests
         operations = []
-        for page in range(1, number_of_page):
+        for page in range(1, number_of_page + 1):
             operations.append(
                 app.op['get_universe_types'](
                     page=page,
@@ -485,11 +357,121 @@ if get_type_id is True:
 
         conn.commit()
 
+        ## group id
+        opname = 'get_universe_groups'
+        op = app.op[opname](page=1)
+
+        res = client.request(op)
+
+        if res.status == 200:
+            number_of_page = res.header['X-Pages'][0]
+
+            # now we know how many pages we want, let's prepare all the requests
+            operations = []
+            for page in range(1, number_of_page + 1):
+                operations.append(
+                    app.op[opname](
+                        page=page,
+                    )
+                )
+
+            results = client.multi_request(operations)
+
+        list_ids = list()
+        for page in results:
+            for t_id in page[1].data:
+                list_ids.append(t_id)
+
+        opname = 'get_universe_groups_group_id'
+        try:
+            del dfs
+        except:
+            pass
+
+        operations = []
+        for id in list_ids:
+            op = app.op[opname](group_id=id)
+            operations.append(op)
+        results = client.multi_request(operations)
+        for result in results:
+            df = pd.io.json.json_normalize(json.loads(result[1].raw))
+            try:
+                dfs = dfs.append(df, ignore_index=True, sort=False)
+            except:
+                dfs = df
+        dfs = dfs.drop(columns=['types'])
+        dfs = dfs.drop_duplicates()
+        dfs.set_index('group_id')
+        dfs.to_sql('universe_groupids', con=engine, index=False, if_exists='replace')
+
+        ## categories id
+        opname = 'get_universe_categories'
+        op = app.op[opname]
+
+        # res = client.request(op)
+
+        res = requests.get('https://esi.evetech.net/latest/universe/categories/?datasource=tranquility')
+
+        list_ids = json.loads(res.content)
+
+        opname = 'get_universe_categories_category_id'
+        try:
+            del dfs
+        except:
+            pass
+
+        operations = []
+        for id in list_ids:
+            op = app.op[opname](category_id=id)
+            operations.append(op)
+        results = client.multi_request(operations)
+        for result in results:
+            df = pd.io.json.json_normalize(json.loads(result[1].raw))
+            try:
+                dfs = dfs.append(df, ignore_index=True, sort=False)
+            except:
+                dfs = df
+        dfs = dfs.drop(columns=['groups'])
+        dfs = dfs.drop_duplicates()
+
+        dfs.to_sql('universe_categoryids', con=engine, index=False, if_exists='replace')
+
+        # get all togetger
+        engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
+
+        df_type = pd.read_sql('universe_type_ids', con=engine)
+
+        # group
+        df_groups = pd.read_sql('universe_groupids', con=engine)
+        # cat
+        df_cat = pd.read_sql('universe_categoryids', con=engine)
+
+        df_type = df_type.drop(columns=['description', 'last_update'])
+
+        df_type = df_type.rename(columns={'name': 'type_name'})
+
+        df_groups = df_groups.rename(columns={'name': 'group_name'})
+
+        df_cat = df_cat.rename(columns={'name': 'cat_name'})
+
+        df = pd.merge(df_type, df_groups, on='group_id', how='left')
+
+        df = pd.merge(df, df_cat, on='category_id', how='left')
+
+        df = df.drop(columns={'published_y', 'published_x'})
+
+        df = df[
+            ['type_id', 'type_name', 'group_id', 'group_name', 'category_id', 'cat_name', 'packaged_volume', 'volume',
+             'metalevel', 'techlevel', 'metagroup']]
+
+        df.to_sql('universe_ids', con=engine, index=False, if_exists='replace')
+
+        del df, df_cat, df_type, df_groups
 # %% get all regions names
 get_geoinfo = False
 if get_geoinfo is True:
 
-    print(colored('\nget all regions','green'))
+    print(colored('\nget all regions', 'green'))
     url = 'https://esi.evetech.net/latest/universe/regions/?datasource=tranquility'
     res = requests.get(url)
     region_ids = json.loads(res.content)
@@ -704,211 +686,12 @@ if get_tran_record is True:
             location_list.append(row['location_id'])
 
     add_location(location_list)
+    del res, results
 
-# %% get regional public orders
-get_reg_orders = True
-if get_reg_orders is True:
-    print(colored('\nget regional public orders','green'))
-
-    # check time
-    c.execute('SELECT max(create_date) as create_date FROM tad_reg_pub_orders')
-    latest = c.fetchone()[0]
-    now = datetime.datetime.now(datetime.timezone.utc)
-    delta = now - latest
-    print('since last update')
-    countdown(now, latest)
-    if delta.total_seconds() / 60 > 5:
-        target_reg = [
-            10000002,  # the forge
-            10000005,  # Detorid
-            10000006,  # Wicked Creek
-            10000008,  # Scalding Pass
-            10000009,  # Insmother
-            10000012,  # Curse
-            10000025,  # Immensea
-            10000061  # Tenerifis
-        ]
-        stamp1 = datetime.datetime.now(datetime.timezone.utc)
-        stamp0 = stamp1
-
-        try:
-            del dfs
-        except: pass
-
-        for item in target_reg:
-            print(item)
-            op = app.op['get_markets_region_id_orders'](region_id=item)
-            for i in range(0, 5):
-                while True:
-                    try:
-                        res = client.request(op)
-
-                        if res.status != 200:
-                            e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-                            e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-                            e_status = res.status
-
-                            print(e_status, item)
-
-                            # reaction to error
-                            if e_remain < 50:
-                                print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                                time.sleep(e_reset)
-                                print('sleep {}s'.format(e_reset))
-                            continue
-                    except Exception as e:
-                        print('Error:' + str(e) + "\n")
-
-                        # check the error remain
-                        e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-                        e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-                        e_status = res.status
-
-                        # reaction to error
-                        if e_remain < 50:
-                            print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                            time.sleep(e_reset)
-                            print('sleep {}s'.format(e_reset))
-                        if e_status == 403:
-                            print(res.raw)
-                            break
-                        continue
-                    break
-
-            # get all pages
-
-            if res.status == 200:
-                number_of_page = res.header['X-Pages'][0]
-
-                url_cakes=[]
-                for page in range(1, number_of_page + 1):
-                    url='https://esi.evetech.net/latest/markets/{}/orders/?datasource=tranquility&order_type=all&page={}'.format(str(item),str(page))
-                    url_cakes.append(url)
-
-                def get_pub_order(url):
-
-                    for i in range(0, 2):
-                        while True:
-                            try:
-                                res = requests.get(url)
-                                if res.status_code == 200:
-                                    break
-                                else:
-                                    e_remain = int(res.headers.get("x-esi-error-limit-remain"))
-                                    e_reset = int(res.headers.get("x-esi-error-limit-reset"))
-                                    if e_remain < 50:
-                                        print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                                        time.sleep(e_reset)
-                                        print('sleep {}s'.format(e_reset))
-                                    continue
-                            except Exception as e:
-                                print('Error:' + str(e) + "\n")
-                                e_remain = int(res.headers.get("x-esi-error-limit-remain"))
-                                e_reset = int(res.headers.get("x-esi-error-limit-reset"))
-                                if e_remain < 50:
-                                    print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                                    time.sleep(e_reset)
-                                    print('sleep {}s'.format(e_reset))
-                                continue
-                            break
-
-                    if res.status_code == 200:
-                        df = pd.io.json.json_normalize(json.loads(res.content))
-                        return df
-                        # try:
-                        #     dfs = dfs.append(df, ignore_index=True, sort=False)
-                        # except:
-                        #     dfs = df
-                    else:
-                        print(colored('{} failed to get {}'.format(res.status_code,url),'green'))
-                        return {}
-
-                with ThreadPoolExecutor(max_workers=None) as executor:
-                    stampin = datetime.datetime.now(datetime.timezone.utc)
-
-                    # executor.map(get_pub_order, pages)
-
-                    futures = [executor.submit(get_pub_order, url) for url in url_cakes]
-                    try:
-                        del df
-                    except: pass
-
-                    for result in as_completed(futures):
-                        if result._state=='FINISHED':
-                            try:
-                                df=df.append(result._result, ignore_index=True, sort=False)
-                            except NameError:
-                                df = result._result
-
-                    stampout = datetime.datetime.now(datetime.timezone.utc)
-                    countdown(stampout,stampin)
-                ### Test END
-            try:
-                dfs = dfs.append(df, ignore_index=True, sort=False)
-            except NameError:
-                dfs = df
-
-            # stamp2 = datetime.datetime.now(datetime.timezone.utc)
-            # countdown(stamp2, stamp0)
-
-
-        rr0, cc0, = dfs.shape
-
-        dfs = dfs.drop_duplicates(subset=['order_id'])
-
-        rr1, cc1, = dfs.shape
-        print('add {} col, removed {} rows of duplicates'.format(cc0 - cc1, rr0 - rr1))
-
-        # insert into postgres
-        db = 'neweden'
-        conn = psycopg2.connect(database=db, user="postgres")
-        c = conn.cursor()
-        stamp3 = datetime.datetime.now(datetime.timezone.utc)
-
-        tablename = 'tad_reg_pub_orders'
-        c.execute('select count(*) from %s' % (tablename))
-        before = c.fetchone()[0]
-        cols = list(dfs.columns.values)
-        dict = dfs.to_dict(orient='records')
-        now = datetime.datetime.now(datetime.timezone.utc)
-        stamp4 = datetime.datetime.now(datetime.timezone.utc)
-        print('pd used')
-        countdown(stamp4, stamp3)
-
-        for row in dict:
-            if isinstance(row['issued'], datetime.date) is False:  # make sure it is datatime
-                row['issued'] = datetime.datetime.strptime(str(row['issued']), '%Y-%m-%dT%H:%M:%SZ').replace(
-                    tzinfo=datetime.timezone.utc)
-
-            sql = '''INSERT INTO %s (operator, create_date, %s) 
-                    VALUES (%s, %%(create_date)s ,%%(%s)s ) 
-                    ON CONFLICT (order_id) 
-                    DO UPDATE
-                    SET 
-                    update_date = EXCLUDED.create_date,
-                    volume_remain=EXCLUDED.volume_remain
-                        ''' % (tablename, ',  '.join(row), char_id, ')s, %('.join(row))
-            # print(sql)
-            row['create_date'] = now
-            c.execute(sql, row)
-        conn.commit()
-        c.execute('select count(*) from %s' % (tablename))
-        after = c.fetchone()[0]
-
-        print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
-
-        stamp5 = datetime.datetime.now(datetime.timezone.utc)
-        print('insert used:')
-        countdown(stamp5, stamp4)
-
-        print('total used')
-        countdown(stamp5, stamp1)
-    else:
-        print('dont too hurry :)')
 # %% get alliance and corplist
 get_coop = True
 if get_coop is True:
-    print('\nget alliance and corplist')
+    print(colored('\nget alliance and corplist', 'green'))
 
     c.execute('SELECT max(last_update) as create_date FROM co_cooplist')
     latest = c.fetchone()[0]
@@ -1082,7 +865,7 @@ if get_coop is True:
 
 get_regional_pub_contracts = True
 if get_regional_pub_contracts is True:
-    print(colored('\nget regional public contract','green'))
+    print(colored('\nget regional public contract', 'green'))
 
     c.execute('SELECT max(last_update) as create_date FROM tad_reg_pub_contracts')
     latest = c.fetchone()[0]
@@ -1094,11 +877,12 @@ if get_regional_pub_contracts is True:
 
         stamp1 = datetime.datetime.now(datetime.timezone.utc)
         op_name = 'get_contracts_public_region_id'
-        region_ids = [10000012,  # curse
+        region_ids = [
                       10000005,  # Detorid
-                      10000061,  # Tenerifis
-                      10000009,  # Insmother
-                      10000025,  # Immensea
+                      10000012,  # curse
+                      # 10000061,  # Tenerifis
+                      # 10000009,  # Insmother
+                      # 10000025,  # Immensea
                       10000006,  # Wicked Creek
                       10000008,  # Scalding Pass
                       ]
@@ -1245,17 +1029,18 @@ if get_regional_pub_contracts is True:
 
         #  extract location
 
-        print(colored('\nget stations and structures','green'))
+        print(colored('\nget stations and structures', 'green'))
 
-        c.execute('SELECT max(last_update) as create_date FROM universe_stations_temp')
+        c.execute('SELECT max(lastupdate) as create_date FROM universe_stations_temp')
         latest = c.fetchone()[0]
         now = datetime.datetime.now(datetime.timezone.utc)
         delta = now - latest
         print('since last update')
         countdown(now, latest)
-        if delta.total_seconds() / 60 > 60*24*2:
+        if delta.total_seconds() / 60 > 60 * 24 * 2:
 
             location_list = df_contracts['start_location_id'].drop_duplicates().tolist()
+            engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
 
             add_location(location_list)
         else:
@@ -1263,12 +1048,13 @@ if get_regional_pub_contracts is True:
 
         # get contract items
 
-        print(colored('\nget items in contracts','green'))
+        print(colored('\nget items in contracts', 'green'))
 
         tablename = 'tad_contracts_items'
         conn, c = lighter()
 
         list_contract = df_contracts[df_contracts['type'] == 'item_exchange']['contract_id'].drop_duplicates().tolist()
+
         tag_unique = 'contract_id'
         sql = 'SELECT DISTINCT %s FROM %s' % (tag_unique, tablename)
         c.execute(sql)
@@ -1279,7 +1065,8 @@ if get_regional_pub_contracts is True:
             if x not in exlist:
                 new_contract.append(x)
 
-        if len(new_contract)>0:
+        if len(new_contract) > 0:
+            print(colored('found {} new pub contract'.format(len(new_contract),'green')))
             op_name = 'get_contracts_public_items_contract_id'
 
             for item in new_contract:
@@ -1386,27 +1173,30 @@ if get_regional_pub_contracts is True:
                             row[tag_bool] = True
                         else:
                             row[tag_bool] = False
-                except: pass
-
+                except:
+                    pass
 
                 try:
                     tag_float = 'material_efficiency'
                     if isinstance(row[tag_float], float) is False:
                         row[tag_float] = float(row[tag_float])
-                except: pass
+                except:
+                    pass
 
                 try:
                     tag_float = 'runs'
                     if isinstance(row[tag_float], float) is False:
                         row[tag_float] = float(row[tag_float])
-                except: pass
+                except:
+                    pass
 
                 try:
                     tag_float = 'time_efficiency'
                     if isinstance(row[tag_float], float) is False:
                         row[tag_float] = float(row[tag_float])
 
-                except: pass
+                except:
+                    pass
 
                 # try:
                 # except: pass
@@ -1414,9 +1204,6 @@ if get_regional_pub_contracts is True:
                 #
                 #
                 #
-
-
-
 
                 row['last_update'] = now
                 # print('')
@@ -1447,495 +1234,1019 @@ if get_regional_pub_contracts is True:
     else:
         print('dont too hurry :)')
 
-# %% get_markets_region_id_types
-get_markets_region_id_types = True
-print(colored('\nget_markets_region_id_types', 'green'))
-
-stamp1 = datetime.datetime.now(datetime.timezone.utc)
-print('get IDs')
-region_ids = [
-    # 10000012,  # curse
-    10000005,  # Detorid
-    # # 10000061,  # Tenerifis
-    # # 10000009,  # Insmother
-    # # 10000025,  # Immensea
-    # # 10000006,  # Wicked Creek
-    # # 10000008,  # Scalding Pass
-    10000002 # the forge
-]
 try:
-    del df
-    del dfs
-    del df1
-    del df_contracts
-    del df_contract_item
-    del df_contract_items
+    del df, df_contract_item, df_contract_items, df_contracts, dfs, res,
 except:
-    # print('cleaned')
     pass
+# %% get public orders
+get_reg_orders = True
+if get_reg_orders is True:
+    print(colored('\nget  public orders', 'green'))
 
-url_cakes = []
-
-for region in region_ids:
-
-    endpoint = 'get_markets_region_id_types'
-
-    # op = app.op[endpoint](region_id=region)
-    #
-    # for i in range(0, 2):
-    #     while True:
-    #         try:
-    #             res = client.request(op)
-    #         except Exception as e:
-    #             print('Error:' + str(e) + "\n")
-    #
-    #             # check the error remain
-    #             e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-    #             e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-    #             e_status = res.status
-    #
-    #             # reaction to error
-    #             if e_remain < 50:
-    #                 print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-    #                 time.sleep(e_reset)
-    #                 print('sleep {}s'.format(e_reset))
-    #             if e_status == 403:
-    #                 print(res.raw)
-    #             continue
-    #         break
-    # if res.status == 200:
-    #     df = json.loads(res.raw)
-    #
-    # else:
-    #     print(res.status, res.raw)
-    #     # check the error remain
-    #     e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-    #     e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-    #     e_status = res.status
-    #
-    #     # reaction to error
-    #     if e_remain < 50:
-    #         print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-    #         time.sleep(e_reset)
-    #         print('sleep {}s'.format(e_reset))
-    #     continue
-
-    op = app.op[endpoint](region_id=region, page=1)
-    res = client.request(op)
-
-    if res.status == 200:
-        number_of_page = res.header['X-Pages'][0]
-
-        # now we know how many pages we want, let's prepare all the requests
-        operations = []
-        for page in range(1, number_of_page):
-            operations.append(
-                app.op[endpoint](region_id=region,
-                                 page=page
-                                 )
-            )
-
-        results = client.multi_request(operations)
-
-    list_typeid = []
-
-    for page in results:
-        for t_id in page[1].data:
-            if t_id not in list_typeid:
-                list_typeid.append(t_id)
-
-    for id in list_typeid:
-        # opname = 'get_markets_region_id_history'
-
-        # op = app.op[endpoint](region_id=region)
-        #
-        # res = client.request(op)
-
-        url = 'https://esi.evetech.net/latest/markets/{}/history/?datasource=tranquility&type_id={}'.format(str(region),
-                                                                                                            str(id))
-
-        # for i in range(0, 2):
-        #     while True:
-        #         try:
-        #             res = requests.get(url, timeout=0.7)
-        #         except Exception as e:
-        #             print('Error:' + str(e) + "\n")
-        #
-        #             # check the error remain
-        #             e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-        #             e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-        #             e_status = res.status_code
-        #
-        #             # reaction to error
-        #             if e_remain < 50:
-        #                 print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-        #                 time.sleep(e_reset)
-        #                 print('sleep {}s'.format(e_reset))
-        #             if e_status == 403:
-        #                 print(res.raw)
-        #             continue
-        #         break
-        #
-        # if res.status_code == 200:
-        #     region_ids = json.loads(res.content)
-        #     df = pd.io.json.json_normalize(json.loads(res.content))
-        #     df['type_id'] = id
-        #     df['region_id'] = region
-        #
-        #     try:
-        #         dfs = dfs.append(df, ignore_index=True, sort=False)
-        #     except:
-        #         dfs = df
-        # else:
-        #     print(res.status_code)
-
-        cake = {}
-        cake['url'] = url
-        cake['region'] = region
-        cake['type_id'] = id
-        url_cakes.append(cake)
-
-stamp2 = datetime.datetime.now(datetime.timezone.utc)
-
-countdown(stamp2,stamp1)
-
-def cookcakes(cake):
-    url = cake['url']
-    region = cake['region']
-    id = cake['type_id']
-    # esi=requests.Session()
-
-    for i in range(0, 5):
+    # check time
+    c.execute('SELECT max(lastupdate) as lastupdate FROM tad_orders_temp')
+    latest = c.fetchone()[0]
+    now = datetime.datetime.now(datetime.timezone.utc)
+    delta = now - latest
+    print('since last update')
+    countdown(now, latest)
+    if delta.total_seconds() / 60 > 5:
+        target_reg = [
+            10000002,  # the forge
+            10000005,  # Detorid
+            # 10000006,  # Wicked Creek
+            # 10000008,  # Scalding Pass
+            # 10000009,  # Insmother
+            # 10000012,  # Curse
+            # # 10000025,  # Immensea
+            # # 10000061  # Tenerifis
+        ]
+        stamp1 = datetime.datetime.now(datetime.timezone.utc)
+        stamp0 = stamp1
 
         try:
-            res = ESI_SESSION.get(url)
+            del dfs
+        except:
+            pass
+        # get item from all region (pub ord)
 
-            # if res.status_code != 420:
-            #     print(res.status_code,'try+ ', i+1, '\nsleeping')
-            #     time.sleep(5)
+        for item in target_reg:
+            print(item)
+            op = app.op['get_markets_region_id_orders'](region_id=item)
+            for i in range(0, 5):
+                while True:
+                    try:
+                        res = client.request(op)
+
+                        if res.status != 200:
+                            e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
+                            e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
+                            e_status = res.status
+
+                            print(e_status, item)
+
+                            # reaction to error
+                            if e_remain < 50:
+                                print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+                                time.sleep(e_reset)
+                                print('sleep {}s'.format(e_reset))
+                            continue
+                    except Exception as e:
+                        print('Error:' + str(e) + "\n")
+
+                        # check the error remain
+                        e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
+                        e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
+                        e_status = res.status
+
+                        # reaction to error
+                        if e_remain < 50:
+                            print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+                            time.sleep(e_reset)
+                            print('sleep {}s'.format(e_reset))
+                        if e_status == 403:
+                            print(res.raw)
+                            break
+                        continue
+                    break
+
+            # get all pages
+
+            if res.status == 200:
+                number_of_page = res.header['X-Pages'][0]
+
+                url_cakes = []
+                for page in range(1, number_of_page + 1):
+                    url = 'https://esi.evetech.net/latest/markets/{}/orders/?datasource=tranquility&order_type=all&page={}'.format(
+                        str(item), str(page))
+                    url_cakes.append(url)
+
+
+                def get_pub_order(url):
+
+                    for i in range(0, 2):
+                        while True:
+                            try:
+                                res = requests.get(url)
+                                if res.status_code == 200:
+                                    break
+                                else:
+                                    e_remain = int(res.headers.get("x-esi-error-limit-remain"))
+                                    e_reset = int(res.headers.get("x-esi-error-limit-reset"))
+                                    if e_remain < 50:
+                                        print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+                                        time.sleep(e_reset)
+                                        print('sleep {}s'.format(e_reset))
+                                    continue
+                            except Exception as e:
+                                print('Error:' + str(e) + "\n")
+                                e_remain = int(res.headers.get("x-esi-error-limit-remain"))
+                                e_reset = int(res.headers.get("x-esi-error-limit-reset"))
+                                if e_remain < 50:
+                                    print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+                                    time.sleep(e_reset)
+                                    print('sleep {}s'.format(e_reset))
+                                continue
+                            break
+
+                    if res.status_code == 200:
+                        df = pd.io.json.json_normalize(json.loads(res.content))
+                        return df
+                        # try:
+                        #     dfs = dfs.append(df, ignore_index=True, sort=False)
+                        # except:
+                        #     dfs = df
+                    else:
+                        print(colored('{} failed to get {}'.format(res.status_code, url), 'green'))
+                        return {}
+
+
+                try:
+                    del df
+                except:
+                    pass
+
+                with ThreadPoolExecutor(max_workers=None) as executor:
+                    stampin = datetime.datetime.now(datetime.timezone.utc)
+
+                    # executor.map(get_pub_order, pages)
+
+                    futures = [executor.submit(get_pub_order, url) for url in url_cakes]
+
+
+                    for result in as_completed(futures):
+                        if result._state == 'FINISHED':
+                            try:
+                                df
+                            except:
+                                df = result._result
+                                continue
+
+                            try:
+                                df = df.append(result._result, ignore_index=True, sort=False)
+                            except:
+                                pass
+
+                    stampout = datetime.datetime.now(datetime.timezone.utc)
+                    countdown(stampout, stampin)
+                ### Test END
+            try:
+                dfs
+            except NameError:
+                dfs = df
+                continue
+            dfs = dfs.append(df, ignore_index=True, sort=False)
+
+            # stamp2 = datetime.datetime.now(datetime.timezone.utc)
+            # countdown(stamp2, stamp0)
+        df_pub_ord = dfs
+        del dfs
+
+        list_ids = pd.read_sql(
+            'SELECT DISTINCT location_id FROM universe_stations_temp WHERE universe_stations_temp.solar_system_id>0'.format(str('structure')),
+            con=engine)
+
+        opname = 'get_markets_structures_structure_id'
+
+        print(colored('\nget  public orders in structure', 'green'))
+        tgt = list_ids['location_id'].tolist()  # "QRFJ-Q - WC starcity"
+        for structure_id in tgt:
+            op = app.op[opname](structure_id=int(structure_id))
+
+            res = client.request(op)
+
+            if res.status == 200:
+                number_of_page = res.header['X-Pages'][0]
+
+                # now we know how many pages we want, let's prepare all the requests
+                operations = []
+                for page in range(1, number_of_page + 1):
+                    operations.append(
+                        app.op[opname](
+                            structure_id=structure_id, page=page
+                        )
+                    )
+
+                results = client.multi_request(operations)
+
+                for result in results:
+                    df = pd.io.json.json_normalize(json.loads(result[1].raw))
+                    try:
+                        dfs
+                    except:
+                        dfs = df
+                    dfs = dfs.append(df, ignore_index=True, sort=False)
+
+        # get item from all region (structure ord)
+
+        df_ord_stu = dfs
+        del dfs
+
+        df_ords = df_ord_stu.append(df_pub_ord, ignore_index=True, sort=False)
+
+        del df_ord_stu, df_pub_ord
+
+        # sum
+        stamp4 = datetime.datetime.now(datetime.timezone.utc)
+
+        rr0, cc0, = df_ords.shape
+
+        df_ords = df_ords.drop_duplicates(subset=['order_id'], keep='first')
+
+        rr1, cc1, = df_ords.shape
+        print('add {} col, removed {} rows of duplicates'.format(cc0 - cc1, rr0 - rr1))
+
+        # insert into postgres
+
+        # dfs['issued']= pd.to_datetime(dfs['issued'],utc=True).astype(pd.Timestamp)
+
+        # dfs=dfs.fillna(0).astype({'system_id':'int64'}, errors='ignore')
+
+        df_ords['lastupdate'] = str(datetime.datetime.now(datetime.timezone.utc))
+        df_ords=df_ords.drop(columns='system_id')
+        print('Found {} active orders'.format(len(df_ords.index)))
+
+        # for idx, item in df_ords['system_id'].tolist():
+        #     if isinstance(item,int) is False:
+        #         print(idx,item)
+
+        stamp5 = datetime.datetime.now(datetime.timezone.utc)
+
+        engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
+
+        df_ords.to_sql('tad_orders_temp', con=engine, index=False, if_exists='replace',
+                       dtype={'issued': sqlalchemy.types.TIMESTAMP(timezone=True),
+                              'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
+                              })
+
+        # del df_ords
+
+        # db = 'neweden'
+        # conn = psycopg2.connect(database=db, user="postgres")
+        # c = conn.cursor()
+        # stamp3 = datetime.datetime.now(datetime.timezone.utc)
+        #
+        # tablename = 'tad_reg_pub_orders'
+        # c.execute('select count(*) from %s' % (tablename))
+        # before = c.fetchone()[0]
+        # cols = list(dfs.columns.values)
+        # dict = dfs.to_dict(orient='records')
+        # now = datetime.datetime.now(datetime.timezone.utc)
+        # stamp4 = datetime.datetime.now(datetime.timezone.utc)
+        # print('pd used')
+        # countdown(stamp4, stamp3)
+        #
+        # for row in dict:
+        #     if isinstance(row['issued'], datetime.date) is False:  # make sure it is datatime
+        #         row['issued'] = datetime.datetime.strptime(str(row['issued']), '%Y-%m-%dT%H:%M:%SZ').replace(
+        #             tzinfo=datetime.timezone.utc)
+        #
+        #     sql = '''INSERT INTO %s (operator, create_date, %s)
+        #             VALUES (%s, %%(create_date)s ,%%(%s)s )
+        #             ON CONFLICT (order_id)
+        #             DO UPDATE
+        #             SET
+        #             update_date = EXCLUDED.create_date,
+        #             volume_remain=EXCLUDED.volume_remain
+        #                 ''' % (tablename, ',  '.join(row), char_id, ')s, %('.join(row))
+        #     # print(sql)
+        #     row['create_date'] = now
+        #     c.execute(sql, row)
+        # conn.commit()
+        # c.execute('select count(*) from %s' % (tablename))
+        # after = c.fetchone()[0]
+        #
+        # print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
+
+        stamp6 = datetime.datetime.now(datetime.timezone.utc)
+        print('insert used:')
+        countdown(stamp6, stamp5)
+
+        print('total used')
+        countdown(stamp6, stamp1)
+    else:
+        print('dont too hurry :)')
+# %% get_markets_history
+get_markets_region_id_types = True
+print(colored('\nget_markets_region_id_types', 'green'))
+if get_markets_region_id_types is True:
+
+    c.execute('SELECT max(last_update) as last_update FROM tad_reg_order_history')
+    latest = c.fetchone()[0]
+    now = datetime.datetime.now(datetime.timezone.utc)
+    delta = now - latest
+    print('since last update')
+    countdown(now, latest)
+    if delta.total_seconds() / 60 > 24:
+
+        stamp1 = datetime.datetime.now(datetime.timezone.utc)
+
+        # 1
+        stampA = datetime.datetime.now(datetime.timezone.utc)
+        print('get url_cakes')
+        region_ids = [
+            # 10000012,  # curse
+            10000005,  # Detorid
+            # # 10000061,  # Tenerifis
+            # # 10000009,  # Insmother
+            # # 10000025,  # Immensea
+            # # 10000006,  # Wicked Creek
+            # # 10000008,  # Scalding Pass
+            10000002  # the forge
+        ]
+        try:
+            del df
+            del dfs
+            del df1
+            del df_contracts
+            del df_contract_item
+            del df_contract_items
+        except:
+            # print('cleaned')
+            pass
+
+        url_cakes = []
+
+        for region in region_ids:
+
+            endpoint = 'get_markets_region_id_types'
+
+            # op = app.op[endpoint](region_id=region)
+            #
+            # for i in range(0, 2):
+            #     while True:
+            #         try:
+            #             res = client.request(op)
+            #         except Exception as e:
+            #             print('Error:' + str(e) + "\n")
+            #
+            #             # check the error remain
+            #             e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
+            #             e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
+            #             e_status = res.status
+            #
+            #             # reaction to error
+            #             if e_remain < 50:
+            #                 print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+            #                 time.sleep(e_reset)
+            #                 print('sleep {}s'.format(e_reset))
+            #             if e_status == 403:
+            #                 print(res.raw)
+            #             continue
+            #         break
+            # if res.status == 200:
+            #     df = json.loads(res.raw)
+            #
+            # else:
+            #     print(res.status, res.raw)
+            #     # check the error remain
+            #     e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
+            #     e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
+            #     e_status = res.status
+            #
+            #     # reaction to error
+            #     if e_remain < 50:
+            #         print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+            #         time.sleep(e_reset)
+            #         print('sleep {}s'.format(e_reset))
             #     continue
 
+            op = app.op[endpoint](region_id=region, page=1)
+            res = client.request(op)
 
-            if res.status_code != 200:
-                # print(res.status_code,'try+ ', i+1, '\nsleeping')
-                time.sleep(3)
-                e_remain = int(res.headers.get("x-esi-error-limit-remain"))
-                e_reset = int(res.headers.get("x-esi-error-limit-reset"))
-                if e_remain < 50:
-                    print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                    print('sleep {}s'.format(e_reset))
-                    time.sleep(e_reset)
+            if res.status == 200:
+                number_of_page = res.header['X-Pages'][0]
 
-                continue
-        except Exception as e:
-            print('Error:' + str(e) + '\nsleeping')
-            time.sleep(3)
+                # now we know how many pages we want, let's prepare all the requests
+                operations = []
+                for page in range(1, number_of_page):
+                    operations.append(
+                        app.op[endpoint](region_id=region,
+                                         page=page
+                                         )
+                    )
 
-            e_remain = int(res.headers.get("x-esi-error-limit-remain"))
-            e_reset = int(res.headers.get("x-esi-error-limit-reset"))
-            if e_remain < 50:
-                print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                print('sleep {}s'.format(e_reset))
-                time.sleep(e_reset)
+                results = client.multi_request(operations)
 
-            if res.status_code > 400:
-                print(res.status_code)
-            continue
-        break
+            list_typeid = []
 
-    if res.status_code == 200:
-        df = pd.io.json.json_normalize(json.loads(res.content))
-        df['type_id'] = id
-        df['region_id'] = region
-        cooked = df.to_dict(orient='records')
+            for page in results:
+                for t_id in page[1].data:
+                    if t_id not in list_typeid:
+                        list_typeid.append(t_id)
 
-        return cooked
+            for id in list_typeid:
+                # opname = 'get_markets_region_id_history'
 
-        # try:
-        #     dfs = dfs.append(df, ignore_index=True, sort=False)
-        # except:
-        #     dfs = df
+                # op = app.op[endpoint](region_id=region)
+                #
+                # res = client.request(op)
+
+                url = 'https://esi.evetech.net/latest/markets/{}/history/?datasource=tranquility&type_id={}'.format(
+                    str(region),
+                    str(id))
+
+                # for i in range(0, 2):
+                #     while True:
+                #         try:
+                #             res = requests.get(url, timeout=0.7)
+                #         except Exception as e:
+                #             print('Error:' + str(e) + "\n")
+                #
+                #             # check the error remain
+                #             e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
+                #             e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
+                #             e_status = res.status_code
+                #
+                #             # reaction to error
+                #             if e_remain < 50:
+                #                 print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+                #                 time.sleep(e_reset)
+                #                 print('sleep {}s'.format(e_reset))
+                #             if e_status == 403:
+                #                 print(res.raw)
+                #             continue
+                #         break
+                #
+                # if res.status_code == 200:
+                #     region_ids = json.loads(res.content)
+                #     df = pd.io.json.json_normalize(json.loads(res.content))
+                #     df['type_id'] = id
+                #     df['region_id'] = region
+                #
+                #     try:
+                #         dfs = dfs.append(df, ignore_index=True, sort=False)
+                #     except:
+                #         dfs = df
+                # else:
+                #     print(res.status_code)
+
+                cake = {}
+
+                cake['url'] = url
+                cake['region'] = region
+                cake['type_id'] = id
+                # future = session.get(cake['url'])
+                #
+                #
+                # # test
+                # res=future.result()
+                #
+                #
+                #
+                # df = pd.io.json.json_normalize(json.loads(res.content))
+                # df['type_id'] = id
+                # df['region_id'] = region
+                #
+                # try:
+                #     dfs
+                # except:
+                #     dfs = df
+                #
+                # try:
+                #     dfs = dfs.append(df, ignore_index=True, sort=False)
+                # except Exception as e:
+                #     print(colored('Error: {}\n'.format(e), 'green'))
+
+
+
+                url_cakes.append(cake)
+
+        stampB = datetime.datetime.now(datetime.timezone.utc)
+        countdown(stampB, stampA)
+
+        # 2
+        stampA = datetime.datetime.now(datetime.timezone.utc)
+        print('get url')
+        with FuturesSession(executor=ThreadPoolExecutor(max_workers=100)) as session:
+
+
+
+            futures = [session.get(cake['url']) for cake in url_cakes]
+
+
+
+
+            results=[]
+            for result in as_completed(futures):
+                results.append(result)
+
+        stampB = datetime.datetime.now(datetime.timezone.utc)
+
+        countdown(stampB, stampA)
+
+
+
+
+
+        # 3
+
+        def feeling(result):
+            content = result.result().content
+
+            url = result.result().url
+
+            nn = re.findall(r'\d+', url)
+
+            dict = json.loads(content)
+
+            for df in dict:
+                df['type_id'] = nn[1]
+                df['region_id'] = nn[0]
+                df['lastupdate'] =now
+                big_dick.append(df)
+        now = str(datetime.datetime.now(datetime.timezone.utc))
+        stampA = datetime.datetime.now(datetime.timezone.utc)
+        print('clear data')
+        with ThreadPoolExecutor(max_workers=None) as executor:
+            big_dick = []
+            executor.map(feeling, results)
+
+        stampB = datetime.datetime.now(datetime.timezone.utc)
+
+        countdown(stampB,stampA)
+
+        # 4
+
+        stampA = datetime.datetime.now(datetime.timezone.utc)
+        print('data 2 pd')
+        df=pd.DataFrame(big_dick)
+        stampB = datetime.datetime.now(datetime.timezone.utc)
+
+        countdown(stampB, stampA)
+
+        stampA = datetime.datetime.now(datetime.timezone.utc)
+        print('pd 2 sql')
+        df.to_sql('tad_reg_order_history', con=engine, index=False, if_exists='replace',
+                       dtype={
+                           'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
+                              })
+        stampB = datetime.datetime.now(datetime.timezone.utc)
+
+        countdown(stampB, stampA)
+
+
+        #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # # def cookcakes(cake):
+        # #     url = cake['url']
+        # #     region = cake['region']
+        # #     id = cake['type_id']
+        # #     # esi=requests.Session()
+        # #
+        # #     for i in range(0, 5):
+        # #
+        # #         try:
+        # #             res = ESI_SESSION.get(url)
+        # #
+        # #             # if res.status_code != 420:
+        # #             #     print(res.status_code,'try+ ', i+1, '\nsleeping')
+        # #             #     time.sleep(5)
+        # #             #     continue
+        # #
+        # #             if res.status_code != 200:
+        # #                 # print(res.status_code,'try+ ', i+1, '\nsleeping')
+        # #                 time.sleep(3)
+        # #                 try:
+        # #                     e_remain = int(res.headers.get("x-esi-error-limit-remain"))
+        # #                     e_reset = int(res.headers.get("x-esi-error-limit-reset"))
+        # #                     if e_remain < 50:
+        # #                         print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+        # #                         print('sleep {}s'.format(e_reset))
+        # #                         time.sleep(e_reset)
+        # #                 except:
+        # #                     break
+        # #                 continue
+        # #         except Exception as e:
+        # #             print('Error:' + str(e) + '\nsleeping')
+        # #             time.sleep(3)
+        # #
+        # #             e_remain = int(res.headers.get("x-esi-error-limit-remain"))
+        # #             e_reset = int(res.headers.get("x-esi-error-limit-reset"))
+        # #             if e_remain < 50:
+        # #                 print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+        # #                 print('sleep {}s'.format(e_reset))
+        # #                 time.sleep(e_reset)
+        # #
+        # #             if res.status_code > 400:
+        # #                 print(res.status_code)
+        # #             continue
+        # #         break
+        # #
+        # #     if res.status_code == 200:
+        # #         df = pd.io.json.json_normalize(json.loads(res.content))
+        # #         df['type_id'] = id
+        # #         df['region_id'] = region
+        # #
+        # #         return df
+        # #
+        # #         # try:
+        # #         #     dfs = dfs.append(df, ignore_index=True, sort=False)
+        # #         # except:
+        # #         #     dfs = df
+        # #     else:
+        # #         print(res.status_code, colored('lost\n', 'red'))
+        # #
+        # #         return {}
+        # #
+        # #
+        # # print('shake handing')
+        # # # try:
+        # # #     del dfs
+        # # # except:
+        # # #     pass
+        # # #
+        # # # l = len(url_cakes)
+        # # # with ThreadPoolExecutor(max_workers=200) as executor:
+        # # #     stamp3 = datetime.datetime.now(datetime.timezone.utc)
+        # # #     ESI_SESSION = requests.Session()
+        # # #     futures = [executor.submit(cookcakes, cake) for cake in url_cakes]
+        # # #
+        # # #     for idx, result in enumerate(as_completed(futures)):
+        # # #
+        # # #         try:
+        # # #             dfs
+        # # #         except:
+        # # #             dfs = result._result
+        # # #
+        # # #         try:
+        # # #             dfs = dfs.append(result._result, ignore_index=True, sort=False)
+        # # #         except:
+        # # #             pass
+        # # #
+        # # #         print('{} of {:06.2f} % '.format(idx, idx / l * 100), end='')
+        # # #
+        # # # stamp4 = datetime.datetime.now(datetime.timezone.utc)
+        # # # countdown(stamp4, stamp3)
+        # #
+        # # session = FuturesSession(executor=ThreadPoolExecutor(max_workers=10))
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # #
+        # # stamp3 = datetime.datetime.now(datetime.timezone.utc)
+        # # with FuturesSession(executor=ThreadPoolExecutor(max_workers=None)) as session:
+        # #
+        # #    # futures= [zip(session.get(cake['url']), cake['region'], cake['type_id']) for cake in url_cakes]
+        # #
+        # #    for cake in url_cakes:
+        # #        cake['res']=session.get(cake['url'])
+        # #
+        # #    stamp4 = datetime.datetime.now(datetime.timezone.utc)
+        # #    countdown(stamp4, stamp3)
+        # #
+        # #    l = len(url_cakes)
+        # #    a = 0
+        # #    for cake in url_cakes:
+        # #        if cake['res']._exception == None:
+        # #
+        # #            df = pd.io.json.json_normalize(json.loads(cake['res'].result().content))
+        # #            a += 1
+        # #            print('{} done {:06.2f} % '.format(a, a / l * 100), end='')
+        # #            df['type_id'] = id
+        # #            df['region_id'] = region
+        # #            try:
+        # #                dfs
+        # #            except:
+        # #                dfs = df
+        # #
+        # #            try:
+        # #                dfs = dfs.append(df, ignore_index=True, sort=False)
+        # #            except Exception as e:
+        # #                print(colored('Error: {}\n'.format(e), 'green'))
+        # #                continue
+        # #        else:
+        # #            print(colored( cake['res']._exception,'red'))
+        # #
+        # # stamp5= datetime.datetime.now(datetime.timezone.utc)
+        # # countdown(stamp5, stamp4)
+        # #
+        # # # results = []
+        # # # for result in as_completed(futures):
+        # # #      # if result.result().status_code ==200:
+        # # #      #     # if len(result.result().content)> 2:
+        # # #      #     #     df = pd.io.json.json_normalize(json.loads(result.result().content))
+        # # #      #     #     try:
+        # # #      #     #         dfs = dfs.append(df, ignore_index=True, sort=False)
+        # # #      #     #     except:
+        # # #      #     #         dfs = df
+        # # #      #
+        # # #      #     results.append(result.result().content)
+        # # #      # else:
+        # # #      #     print(result.result().status_code)
+        # # #      results.append(result)
+        # #
+        # # # futures= [session.get(cake['url'], background=bg_cb(type_id=cake['type_id'],region=cake['region'])) for cake in url_cakes]
+        # #
+        # # #     stamp2 = datetime.datetime.now(datetime.timezone.utc)
+        # # #     results=[]
+        # # #     futures= [session.get(cake['url'], background=bg_cb(type_id=cake['type_id'],region=cake['region'])) for cake in url_cakes]
+        # # #
+        # # #     results=[]
+        # # #     for result in as_completed(futures):
+        # # #         # if result.result().status_code ==200:
+        # # #         #     # if len(result.result().content)> 2:
+        # # #         #     #     df = pd.io.json.json_normalize(json.loads(result.result().content))
+        # # #         #     #     try:
+        # # #         #     #         dfs = dfs.append(df, ignore_index=True, sort=False)
+        # # #         #     #     except:
+        # # #         #     #         dfs = df
+        # # #         #
+        # # #         #     results.append(result.result().content)
+        # # #         # else:
+        # # #         #     print(result.result().status_code)
+        # # #         results.append(result)
+        # # #     stamp3 = datetime.datetime.now(datetime.timezone.utc)
+        # # #     countdown(stamp3, stamp2)
+        # #
+        # # ### insert into db
+        # print('insert the database')
+        # tablename = 'tad_reg_order_history'
+        # now = datetime.datetime.now(datetime.timezone.utc)
+        #
+        # # dict = dfs.drop_duplicates().to_dict(orient='records')
+        # stamp5 = datetime.datetime.now(datetime.timezone.utc)
+        # conn, c = lighter()
+        #
+        # c.execute('select count(*) from %s' % (tablename))
+        # before = c.fetchone()[0]
+        #
+        # ## TODO change to pd.to_sql
+        # dfs['lastupdate']=now
+        # dfs.to_sql(tablename, con=engine, index=False, if_exists='replace')
+        #
+        # # def cookdb(results):
+        # # for result in results:
+        # #     dict = result._result
+        # #     if dict is not None:
+        # #         if len(dict) > 0:
+        # #             for row in dict:
+        # #                 # print(row)
+        # #                 # tag_date = 'date_issued'
+        # #                 # if isinstance(row[tag_date], datetime.date) is False:  # make sure it is datatime
+        # #                 #     row[tag_date] = datetime.datetime.strptime(row[tag_date], '%Y-%m-%dT%H:%M:%SZ').replace(
+        # #                 #         tzinfo=datetime.timezone.utc)
+        # #
+        # #                 tag_date = 'date'
+        # #                 if isinstance(row[tag_date], datetime.date) is False:  # make sure it is datatime
+        # #                     row[tag_date] = datetime.datetime.strptime(row[tag_date], '%Y-%m-%d')
+        # #
+        # #                 tag_int = ['order_count', 'volume']
+        # #                 for tag in tag_int:
+        # #                     if isinstance(row[tag], bool) is False:
+        # #                         if row[tag] > 0:
+        # #                             row[tag] = int(row[tag])
+        # #                         else:
+        # #                             row[tag] = None
+        # #                 #
+        # #                 # tag_bool = 'is_blueprint_copy'
+        # #                 # if isinstance(row[tag_bool], bool) is False:
+        # #                 #     if row[tag_bool] > 0:
+        # #                 #         row[tag_bool] = True
+        # #                 #     else:
+        # #                 #         row[tag_bool] = False
+        # #                 #
+        # #                 # tag_float = 'material_efficiency'
+        # #                 # if isinstance(row[tag_float], float) is False:
+        # #                 #     row[tag_float] = float(row[tag_float])
+        # #
+        # #                 row['last_update'] = now
+        # #                 # print('')
+        # #                 # for item in row:
+        # #                 #     print(row[item])
+        # #
+        # #                 tag_unique = ('type_id', 'region_id', 'date')
+        #
+        # #                 sql = '''INSERT INTO %s (%s)
+        # #                                VALUES ( %%(%s)s )
+        # #                                ON CONFLICT (%s)
+        # #                                DO NOTHING
+        # #                                    ''' % (
+        # #                     tablename, ',  '.join(row), ')s, %('.join(row), ',  '.join(tag_unique))
+        # #                 # print(sql)
+        # #                 c.execute(sql, row)
+        # #
+        # #     # with ThreadPoolExecutor(max_workers=None) as executor:
+        # #     #     stamp4 = datetime.datetime.now(datetime.timezone.utc)
+        # #     #
+        # #     #
+        # #     #     executor.map(cookdb, results)
+        # #     #
+        # #     #     # futures = [executor.submit(cookcakes, cake) for cake in url_cakes]
+        # #     #     # results = []
+        # #     #     # for result in as_completed(futures):
+        # #     #     #     results.append(result)
+        # #     #
+        # #     #     stamp5 = datetime.datetime.now(datetime.timezone.utc)
+        # #     #     countdown(stamp3, stamp2)
+        # #
+        # # conn.commit()
+        #
+        # c.execute('select count(*) from %s' % (tablename))
+        # after = c.fetchone()[0]
+        # print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
+        stamp2 = datetime.datetime.now(datetime.timezone.utc)
+        countdown(stamp2, stamp1)
     else:
-        print(res.status_code,colored('lost', 'red'))
+        print('not yet updated in real world')
+# %% start to analysis
+def ana():
+    ## find the type_id list for det
 
-        return {}
+    target_reg = [
+        10000002,  # the forge
+        10000005,  # Detorid
+        # 10000006,  # Wicked Creek
+        # 10000008,  # Scalding Pass
+        # 10000009,  # Insmother
+        # 10000012,  # Curse
+        # 10000025,  # Immensea
+        # 10000061  # Tenerifis
+    ]
+    # find T2 things exist in det
 
-print('shake handing')
+    engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
 
-with ThreadPoolExecutor(max_workers=None) as executor:
-    stamp3 = datetime.datetime.now(datetime.timezone.utc)
-    ESI_SESSION = requests.Session()
-    futures = [executor.submit(cookcakes, cake) for cake in url_cakes]
-    results = []
-    for result in as_completed(futures):
-        results.append(result)
-
-    stamp4 = datetime.datetime.now(datetime.timezone.utc)
-    countdown(stamp4, stamp3)
-
-    ### Create a pool of processes. By default, one is created for each CPU in your machine.
-    # with ProcessPoolExecutor() as executor:
-    #  ### Get a list of files to process
-    #  region_ids = [
-    #      # 10000012,  # curse
-    #      10000005,  # Detorid
-    #      # 10000061,  # Tenerifis
-    #      # 10000009,  # Insmother
-    #      # 10000025,  # Immensea
-    #      # 10000006,  # Wicked Creek
-    #      # 10000008,  # Scalding Pass
-    #  ]
-    #  try:
-    #      del df
-    #      del dfs
-    #      del df1
-    #      del df_contracts
-    #      del df_contract_item
-    #      del df_contract_items
-    #  except:
-    #      # print('cleaned')
-    #      pass
+    # df_ids=pd.read_sql('universe_ids', con=engine)
     #
-    #  url_cakes = []
+    # df_pub_ord=pd.read_sql('tad_reg_pub_orders', con=engine)
     #
-    #  for region in region_ids:
+    # # df_det_sys=pd.read_sql('SELECT system_name, system_id from universe_geo WHERE region_id')
     #
-    #      endpoint = 'get_markets_region_id_types'
+    # df_ord_det=df_pub_ord.loc[df_pub_ord['system_id']==30000481]
     #
-    #      # op = app.op[endpoint](region_id=region)
-    #      #
-    #      # for i in range(0, 2):
-    #      #     while True:
-    #      #         try:
-    #      #             res = client.request(op)
-    #      #         except Exception as e:
-    #      #             print('Error:' + str(e) + "\n")
-    #      #
-    #      #             # check the error remain
-    #      #             e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-    #      #             e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-    #      #             e_status = res.status
-    #      #
-    #      #             # reaction to error
-    #      #             if e_remain < 50:
-    #      #                 print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-    #      #                 time.sleep(e_reset)
-    #      #                 print('sleep {}s'.format(e_reset))
-    #      #             if e_status == 403:
-    #      #                 print(res.raw)
-    #      #             continue
-    #      #         break
-    #      # if res.status == 200:
-    #      #     df = json.loads(res.raw)
-    #      #
-    #      # else:
-    #      #     print(res.status, res.raw)
-    #      #     # check the error remain
-    #      #     e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-    #      #     e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-    #      #     e_status = res.status
-    #      #
-    #      #     # reaction to error
-    #      #     if e_remain < 50:
-    #      #         print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-    #      #         time.sleep(e_reset)
-    #      #         print('sleep {}s'.format(e_reset))
-    #      #     continue
+    # df_ord_jita=df_pub_ord.loc[df_pub_ord['system_id']==30000142]
     #
-    #      op = app.op[endpoint](region_id=region, page=1)
-    #      res = client.request(op)
+    # df_t2 = pd.read_sql('SELECT * FROM universe_ids WHERE metalevel=5', con=engine)
     #
-    #      if res.status == 200:
-    #          number_of_page = res.header['X-Pages'][0]
+    # # get systems for "1026996997751" QRF
     #
-    #          # now we know how many pages we want, let's prepare all the requests
-    #          operations = []
-    #          for page in range(1, number_of_page):
-    #              operations.append(
-    #                  app.op[endpoint](region_id=region,
-    #                                   page=page
-    #                                   )
-    #              )
+    # df_geo_det = pd.read_sql('SELECT system_id FROM universe_geo where region_id=10000005', con=engine)
     #
-    #          results = client.multi_request(operations)
+    # df_stations=pd.read_sql('universe_stations_temp', con=engine)
     #
-    #      list_typeid = []
+    # df_stations['system_id_n']=df_stations['system_id']+df_stations['solar_system_id']
     #
-    #      for page in results:
-    #          for t_id in page[1].data:
-    #              if t_id not in list_typeid:
-    #                  list_typeid.append(t_id)
+    # df_stations_det=df_stations[df_stations['system_id_n'].isin(df_geo_det['system_id'].tolist())]
     #
-    #      for id in list_typeid:
-    #          # opname = 'get_markets_region_id_history'
+    # # get orders from det
     #
-    #          # op = app.op[endpoint](region_id=region)
-    #          #
-    #          # res = client.request(op)
+    # df_ord_det = pd.read_sql(
+    #     'SELECT * FROM tad_orders_temp where location_id in {}'.format(tuple(df_stations_det['location_id'].tolist())), con=engine)
+    # # get T2 orders
+    # df_ord_det_t2 = df_ord_det[df_ord_det['type_id'].isin(df_t2['type_id'].tolist())]
+    # df_ord_det_t2=pd.merge(df_ord_det_t2,df_t2,on='type_id', how='left')
+    # print(df_ord_det_t2.head())
     #
-    #          url = 'https://esi.evetech.net/latest/markets/{}/history/?datasource=tranquility&type_id={}'.format(
-    #              str(region),
-    #              str(id))
-    #          #
-    #          # for i in range(0, 2):
-    #          #     while True:
-    #          #         try:
-    #          #             res = requests.get(url, timeout=0.7)
-    #          #         except Exception as e:
-    #          #             print('Error:' + str(e) + "\n")
-    #          #
-    #          #             # check the error remain
-    #          #             e_remain = int(res.header.get("x-esi-error-limit-remain")[0])
-    #          #             e_reset = int(res.header.get("x-esi-error-limit-reset")[0])
-    #          #             e_status = res.status_code
-    #          #
-    #          #             # reaction to error
-    #          #             if e_remain < 50:
-    #          #                 print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-    #          #                 time.sleep(e_reset)
-    #          #                 print('sleep {}s'.format(e_reset))
-    #          #             if e_status == 403:
-    #          #                 print(res.raw)
-    #          #             continue
-    #          #         break
-    #          #
-    #          # if res.status_code == 200:
-    #          #     region_ids = json.loads(res.content)
-    #          #     df = pd.io.json.json_normalize(json.loads(res.content))
-    #          #     df['type_id'] = id
-    #          #     df['region_id'] = region
-    #          #
-    #          #     try:
-    #          #         dfs = dfs.append(df, ignore_index=True, sort=False)
-    #          #     except:
-    #          #         dfs = df
-    #          # else:
-    #          #     print(res.status_code)
-    #          cake = {}
-    #          cake['url'] = url
-    #          cake['region'] = region
-    #          cake['type_id'] = id
-    #          url_cakes.append(cake)
+    # df=df_ord_det_t2.groupby(['type_id','location_id'], as_index=False).agg({'volume_remain':{'total':'sum'},
+    #                                                       'price':{'min':'min','max':'max'},
+    #                                                       'order_id':{'count':'count'}
+    #                                                       })
     #
-    #  ### Process the list of files, but split the work across the process pool to use all CPUs
-    #  ### Loop through all jpg files in the current folder
-    #  ### Resize each one to size 600x600
-    #  executor.map(cookcakes, url_cakes)
+    # print(df.head())
 
 
-# session = FuturesSession(executor=ThreadPoolExecutor(max_workers=4))
-#
-# def bg_cb(resp,type_id,region):
-#     # parse the json storing the result on the response object
-#     resp.data = resp.json()
-#     resp.typeid= type_id
-#     resp.region=region
-#
-# with FuturesSession(executor=ThreadPoolExecutor(max_workers=None)) as session:
-#     stamp2 = datetime.datetime.now(datetime.timezone.utc)
-#     results=[]
-#     futures= [session.get(cake['url'], background=bg_cb(type_id=cake['type_id'],region=cake['region'])) for cake in url_cakes]
-#
-#     results=[]
-#     for result in as_completed(futures):
-#         # if result.result().status_code ==200:
-#         #     # if len(result.result().content)> 2:
-#         #     #     df = pd.io.json.json_normalize(json.loads(result.result().content))
-#         #     #     try:
-#         #     #         dfs = dfs.append(df, ignore_index=True, sort=False)
-#         #     #     except:
-#         #     #         dfs = df
-#         #
-#         #     results.append(result.result().content)
-#         # else:
-#         #     print(result.result().status_code)
-#         results.append(result)
-#     stamp3 = datetime.datetime.now(datetime.timezone.utc)
-#     countdown(stamp3, stamp2)
+    df_ids = pd.read_sql('universe_ids', con=engine)
+
+    df_ids = df_ids[['type_id', 'type_name', 'group_name',
+                     'cat_name', 'packaged_volume', 'metalevel', 'techlevel',
+                     'metagroup']]
+
+    df_geo = pd.read_sql('universe_geo', con=engine)
+
+    df_geo = df_geo[['system_id', 'constellation_id', 'region_id', 'system_name', 'region_name']]
+
+    df_stations = pd.read_sql('universe_stations_temp', con=engine)
+
+    df_stations['system_id'] = df_stations['system_id'] + df_stations['solar_system_id']
+
+    df_stations = df_stations[['name', 'system_id', 'pos_tpye', 'location_id']]
+
+    df_ords = pd.read_sql('tad_orders_temp', con=engine)
+
+    anly = df_ords[df_ords['location_id'].isin([1026996997751,  # QRFJ
+                                                60003760  # JITA
+                                                ])]
+
+    # print(anly.head())
+
+    anly = pd.merge(anly, df_ids, on='type_id')
+
+    anly = pd.merge(anly, df_stations, on='location_id')
+
+    sell = anly[anly['is_buy_order'] == False]
+    buy = anly[anly['is_buy_order'] == True]
 
 
+    # df=buy.groupby(['type_id'], as_index=False).agg({'volume_remain':{'total':'sum'},
+    #                                                       'price':{'min':'min','max':'max'},
+    #                                                       'order_id':{'count':'count'}
+    #                                                       })
+
+    anly_buy=buy.groupby(['type_id','type_name','cat_name','name'], as_index=False).agg({'volume_remain':'sum',
+                                                          'price':['min','max'],
+                                                          'order_id':'count'
+                                                          })
+    anly_buy.columns = ["_".join(x) for x in anly_buy.columns.ravel()]
+
+    anly_buy_qrfj=anly_buy[anly_buy['name_']=='QRFJ-Q - WC starcity']
+
+    anly_buy_jita=anly_buy[anly_buy['name_']!='QRFJ-Q - WC starcity']
 
 
+    anly_sell=sell.groupby(['type_id','type_name','cat_name','name'], as_index=False).agg({'volume_remain':'sum',
+                                                          'price':['min','max'],
+                                                          'order_id':'count'
+                                                          })
 
-### insert into db
-print('fuck the database')
-tablename = 'tad_reg_order_history'
-now = datetime.datetime.now(datetime.timezone.utc)
+    anly_sell.columns = ["_".join(x) for x in anly_sell.columns.ravel()]
 
-# dict = dfs.drop_duplicates().to_dict(orient='records')
-stamp5 = datetime.datetime.now(datetime.timezone.utc)
-conn, c = lighter()
+    anly_sell_qrfj=anly_sell[anly_sell['name_']=='QRFJ-Q - WC starcity']
 
-c.execute('select count(*) from %s' % (tablename))
-before = c.fetchone()[0]
+    anly_sell_jita=anly_sell[anly_sell['name_']!='QRFJ-Q - WC starcity']
 
-# def cookdb(results):
-for result in results:
-    dict = result._result
-    if dict is not None:
-        if len(dict) > 0:
-            for row in dict:
-                # print(row)
-                # tag_date = 'date_issued'
-                # if isinstance(row[tag_date], datetime.date) is False:  # make sure it is datatime
-                #     row[tag_date] = datetime.datetime.strptime(row[tag_date], '%Y-%m-%dT%H:%M:%SZ').replace(
-                #         tzinfo=datetime.timezone.utc)
+    #Export
+    #1
+    df_q2j_s2b=pd.merge(anly_sell_qrfj, anly_buy_jita, on='type_id_')
+    df_q2j_s2b['raw_profit_q2j_s2b']= df_q2j_s2b['price_max_y'] - df_q2j_s2b['price_min_x']
+    df_q2j_s2b=pd.merge(df_q2j_s2b, df_ids, left_on='type_id_', right_on='type_id')
+    df_q2j_s2b['raw_margin_q2j_s2b']=(df_q2j_s2b['price_max_y'] - df_q2j_s2b['price_min_x'])/df_q2j_s2b['price_min_x']
+    df_q2j_s2b=df_q2j_s2b.sort_values(by = ['raw_margin_q2j_s2b'], ascending=False)
 
-                tag_date = 'date'
-                if isinstance(row[tag_date], datetime.date) is False:  # make sure it is datatime
-                    row[tag_date] = datetime.datetime.strptime(row[tag_date], '%Y-%m-%d')
+    df_q2j_s2b.to_sql('df_q2j_s2b', con=engine, index=False, if_exists='replace')
 
-                tag_int = ['order_count', 'volume']
-                for tag in tag_int:
-                    if isinstance(row[tag], bool) is False:
-                        if row[tag] > 0:
-                            row[tag] = int(row[tag])
-                        else:
-                            row[tag] = None
-                #
-                # tag_bool = 'is_blueprint_copy'
-                # if isinstance(row[tag_bool], bool) is False:
-                #     if row[tag_bool] > 0:
-                #         row[tag_bool] = True
-                #     else:
-                #         row[tag_bool] = False
-                #
-                # tag_float = 'material_efficiency'
-                # if isinstance(row[tag_float], float) is False:
-                #     row[tag_float] = float(row[tag_float])
+    #2
+    df_q2j_s2s=pd.merge(anly_sell_qrfj, anly_sell_jita, on='type_id_')
+    df_q2j_s2s['raw_profit-q2j_s2s']= df_q2j_s2s['price_min_y'] - df_q2j_s2s['price_min_x']
+    df_q2j_s2s=pd.merge(df_q2j_s2s, df_ids, left_on='type_id_', right_on='type_id')
+    df_q2j_s2s['raw_margin-q2j_s2s']=(df_q2j_s2s['price_min_y'] - df_q2j_s2s['price_min_x'])/df_q2j_s2s['price_min_x']
+    df_q2j_s2s=df_q2j_s2s.sort_values(by = ['raw_margin-q2j_s2s'], ascending=False)
 
-                row['last_update'] = now
-                # print('')
-                # for item in row:
-                #     print(row[item])
+    df_q2j_s2s.to_sql('df_q2j_s2s', con=engine, index=False, if_exists='replace')
 
-                tag_unique = ('type_id', 'region_id', 'date')
 
-                sql = '''INSERT INTO %s (%s) 
-                               VALUES ( %%(%s)s ) 
-                               ON CONFLICT (%s) 
-                               DO NOTHING 
-                                   ''' % (tablename, ',  '.join(row), ')s, %('.join(row), ',  '.join(tag_unique))
-                # print(sql)
-                c.execute(sql, row)
+    # import
+    # 3
+    df_j2q_b2s=pd.merge(anly_buy_jita,anly_sell_qrfj, on='type_id_')
+    df_j2q_b2s['raw_profit_j2q_b2s']= df_j2q_b2s['price_min_y'] - df_j2q_b2s['price_max_x']
+    df_j2q_b2s=pd.merge(df_j2q_b2s, df_ids, left_on='type_id_', right_on='type_id')
+    df_j2q_b2s['raw_margin_j2q_b2s']=df_j2q_b2s['raw_profit_j2q_b2s']/df_j2q_b2s['price_max_x']
+    df_j2q_b2s['profit-ship_j2q_b2s']=df_j2q_b2s['raw_profit_j2q_b2s']-df_j2q_b2s['packaged_volume']*1400
+    df_j2q_b2s['margin-ship_j2q_b2s']=df_j2q_b2s['profit-ship_j2q_b2s']/df_j2q_b2s['price_min_x']
+    df_j2q_b2s=df_j2q_b2s.sort_values(by = ['margin-ship_j2q_b2s'], ascending=False)
 
-    # with ThreadPoolExecutor(max_workers=None) as executor:
-    #     stamp4 = datetime.datetime.now(datetime.timezone.utc)
-    #
-    #
-    #     executor.map(cookdb, results)
-    #
-    #     # futures = [executor.submit(cookcakes, cake) for cake in url_cakes]
-    #     # results = []
-    #     # for result in as_completed(futures):
-    #     #     results.append(result)
-    #
-    #     stamp5 = datetime.datetime.now(datetime.timezone.utc)
-    #     countdown(stamp3, stamp2)
+    df_j2q_b2s.to_sql('df_j2q_b2s', con=engine, index=False, if_exists='replace')
 
-conn.commit()
-c.execute('select count(*) from %s' % (tablename))
-after = c.fetchone()[0]
-print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
-stamp6 = datetime.datetime.now(datetime.timezone.utc)
-countdown(stamp6, stamp5)
+    # 4
+    df_j2q_s2s=pd.merge(anly_sell_jita,anly_sell_qrfj, on='type_id_')
+    df_j2q_s2s['raw_profit_j2q_s2s']= df_j2q_s2s['price_min_y'] - df_j2q_s2s['price_min_x']
+    df_j2q_s2s=pd.merge(df_j2q_s2s, df_ids, left_on='type_id_', right_on='type_id')
+    df_j2q_s2s['raw_margin_j2q_s2s']=df_j2q_s2s['raw_profit_j2q_s2s']/df_j2q_s2s['price_min_x']
+    df_j2q_s2s['profit-ship_j2q_s2s']=df_j2q_s2s['raw_profit_j2q_s2s']-df_j2q_s2s['packaged_volume']*1400
+    df_j2q_s2s['margin-ship_j2q_s2s']=df_j2q_s2s['profit-ship_j2q_s2s']/df_j2q_s2s['price_min_x']
+    df_j2q_s2s=df_j2q_s2s.sort_values(by = ['margin-ship_j2q_s2s'], ascending=False)
+
+    df_j2q_s2s.to_sql('df_j2q_s2s', con=engine, index=False, if_exists='replace')
+
+
