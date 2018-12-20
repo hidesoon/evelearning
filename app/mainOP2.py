@@ -1,4 +1,5 @@
 import datetime
+import io
 import json
 import re
 import time
@@ -7,7 +8,7 @@ from concurrent.futures import as_completed, ThreadPoolExecutor
 import pandas as pd
 import psycopg2
 import requests
-import sqlalchemy
+from sqlalchemy import create_engine, event
 from esipy import App
 from esipy import EsiClient
 from esipy import EsiSecurity
@@ -19,7 +20,8 @@ from termcolor import colored
 
 
 def cynoup(app_key, appname):
-    app = App.create(url="https://esi.tech.ccp.is/latest/swagger.json?datasource=tranquility")
+    # app = App.create(url="https://esi.tech.ccp.is/latest/swagger.json?datasource=tranquility")
+    app = App.create(url="https://esi.evetech.net/latest/swagger.json?datasource=tranquility")
 
     # replace the redirect_uri, client_id and secret_key values
     # with the values you get from the STEP 1 !
@@ -68,25 +70,17 @@ def countdown(new, old):
 
 
 def add_location(location_list):
-
     stamp1 = datetime.datetime.now(datetime.timezone.utc)
 
-    engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
-
-
-    def_loco=pd.read_sql('universe_stations_temp', con=engine)
+    def_loco = pd.read_sql('universe_stations_temp', con=engine)
 
     def_loco.drop_duplicates(subset='location_id')
 
-
-
-
-    before=len(def_loco.index)
+    before = len(def_loco.index)
     # print('\nfound {} new locations'.format(len(location_new)))
     # chop the coming task
-    if before>0:
-
-        def_loco=def_loco[~def_loco['location_id'].isin(location_list)]
+    if before > 0:
+        def_loco = def_loco[~def_loco['location_id'].isin(location_list)]
     # update the coming task
     # anc = 0
     try:
@@ -102,7 +96,7 @@ def add_location(location_list):
             endpoint = 'get_universe_stations_station_id'
 
             op = app.op[endpoint](station_id=location_id)
-            tag_station='station'
+            tag_station = 'station'
 
         else:
             endpoint = 'get_universe_structures_structure_id'
@@ -128,11 +122,11 @@ def add_location(location_list):
             df['ACL'] = True
         else:
             if res.status == 403:
-                df={}
+                df = {}
                 df['location_id'] = location_id
                 df['pos_type'] = tag_station
                 df['ACL'] = False
-                df=pd.DataFrame.from_dict([df])
+                df = pd.DataFrame.from_dict([df])
                 print('ACL updated')
             else:
                 print('OMG')
@@ -165,20 +159,19 @@ def add_location(location_list):
 
     now = datetime.datetime.now(datetime.timezone.utc)
 
-    def_loc['lastupdate']=now
+    def_loc['lastupdate'] = now
 
-
-    if before>0:
-
+    if before > 0:
         def_loc = def_loc.append(def_loco, ignore_index=True, sort=False)
 
-    def_loc=def_loc.drop_duplicates(subset='location_id')
+    def_loc = def_loc.drop_duplicates(subset='location_id')
 
     # def_loc.drop_duplicates()
     # print('hehe')
 
-    def_loc.to_sql('universe_stations_temp', con=engine, index=False, if_exists='replace',dtype={'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
-                              })
+    def_loc.to_sql('universe_stations_temp', con=engine, index=False, if_exists='replace',
+                   dtype={'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
+                          })
 
     # print('baba')
 
@@ -190,7 +183,10 @@ def add_location(location_list):
 
 
 
+
+
 # %% connect DB
+stamp0 = datetime.datetime.now(datetime.timezone.utc)
 stamp1 = datetime.datetime.now(datetime.timezone.utc)
 
 
@@ -202,7 +198,38 @@ def lighter():
 
 
 conn, c = lighter()
-engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
+
+# dont forget to import event
+
+
+engine = create_engine('postgresql+psycopg2://postgres@localhost:5432/neweden')
+
+
+def df2csv2sql(df, tablename):
+    stampA = datetime.datetime.now(datetime.timezone.utc)
+    df.head(0).to_sql(tablename, con=engine, if_exists='replace', index=False)  # truncates the table
+
+    print('table replaced')
+
+    conne = engine.raw_connection()
+    cur = conne.cursor()
+    try:
+        del output
+    except:
+        pass
+    output = io.StringIO()
+    df.to_csv(output, sep='\t', header=False, index=False)
+    output.seek(0)
+    # contents = output.getvalue()
+    cur.copy_from(output, tablename, null="")  # null values become ''
+    conne.commit()
+    conne.close()
+    stampB = datetime.datetime.now(datetime.timezone.utc)
+    print('write finished')
+    countdown(stampB, stampA)
+    cur.close()
+    conne.close()
+
 
 ## check now
 c.execute('SELECT time from sys_log order by id DESC limit 1')
@@ -437,7 +464,6 @@ if get_type_id is True:
         dfs.to_sql('universe_categoryids', con=engine, index=False, if_exists='replace')
 
         # get all togetger
-        engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
 
         df_type = pd.read_sql('universe_type_ids', con=engine)
 
@@ -691,10 +717,14 @@ if get_tran_record is True:
 # %% get alliance and corplist
 get_coop = True
 if get_coop is True:
+
+    conn, c = lighter()
+
     print(colored('\nget alliance and corplist', 'green'))
 
     c.execute('SELECT max(last_update) as create_date FROM co_cooplist')
     latest = c.fetchone()[0]
+    latest = datetime.datetime.strptime(''.join(latest.rsplit(':', 1)), '%Y-%m-%d %H:%M:%S.%f%z')
     now = datetime.datetime.now(datetime.timezone.utc)
     delta = now - latest
     print('since last update')
@@ -807,7 +837,7 @@ if get_coop is True:
 
         # insert to postgres
         conn, c = lighter()
-        cols = list(df_all_corps.columns.values)
+        # cols = list(df_all_corps.columns.values)
         dict = df_all_corps.to_dict(orient='records')
 
         tablename = 'co_cooplist'
@@ -817,27 +847,31 @@ if get_coop is True:
 
         for row in dict:
             if isinstance(row['date_founded'], datetime.date) is False:  # make sure it is datatime
-                row['date_founded'] = datetime.datetime.strptime(row['date_founded'], '%Y-%m-%dT%H:%M:%SZ').replace(
-                    tzinfo=datetime.timezone.utc)
-            row['last_update'] = now
+                row['date_founded'] = str(datetime.datetime.strptime(row['date_founded'], '%Y-%m-%dT%H:%M:%SZ').replace(
+                    tzinfo=datetime.timezone.utc))
+            row['last_update'] = str(now)
 
-            sql = '''INSERT INTO %s (%s) 
-                    VALUES ( %%(%s)s ) 
-                    ON CONFLICT (corporation_id) 
-                    DO UPDATE
-                    SET 
-                    last_update = EXCLUDED.last_update,
-                    ceo_id=EXCLUDED.ceo_id,
-                    description=EXCLUDED.description,
-                    home_station_id=EXCLUDED.home_station_id,
-                    member_count=EXCLUDED.member_count,
-                    tax_rate=EXCLUDED.tax_rate,
-                    ticker=EXCLUDED.ticker,
-                    url=EXCLUDED.url
-                        ''' % (tablename, ',  '.join(row), ')s, %('.join(row))
+            # sql = '''INSERT INTO %s (%s)
+            #         VALUES ( %%(%s)s )
+            #         ON CONFLICT (corporation_id)
+            #         DO UPDATE
+            #         SET
+            #         last_update = EXCLUDED.last_update,
+            #         ceo_id=EXCLUDED.ceo_id,
+            #         description=EXCLUDED.description,
+            #         home_station_id=EXCLUDED.home_station_id,
+            #         member_count=EXCLUDED.member_count,
+            #         tax_rate=EXCLUDED.tax_rate,
+            #         ticker=EXCLUDED.ticker,
+            #         url=EXCLUDED.url
+            #             ''' % (tablename, ',  '.join(row), ')s, %('.join(row))
+            #
+            # c.execute(sql, row)
+        # conn.commit()
 
-            c.execute(sql, row)
-        conn.commit()
+        df = pd.DataFrame(dict)
+
+        df2csv2sql(df, tablename)
         c.execute('select count(*) from %s' % (tablename))
         after = c.fetchone()[0]
 
@@ -878,14 +912,14 @@ if get_regional_pub_contracts is True:
         stamp1 = datetime.datetime.now(datetime.timezone.utc)
         op_name = 'get_contracts_public_region_id'
         region_ids = [
-                      10000005,  # Detorid
-                      10000012,  # curse
-                      # 10000061,  # Tenerifis
-                      # 10000009,  # Insmother
-                      # 10000025,  # Immensea
-                      10000006,  # Wicked Creek
-                      10000008,  # Scalding Pass
-                      ]
+            10000005,  # Detorid
+            10000012,  # curse
+            # 10000061,  # Tenerifis
+            # 10000009,  # Insmother
+            # 10000025,  # Immensea
+            10000006,  # Wicked Creek
+            10000008,  # Scalding Pass
+        ]
         try:
             del df
             del dfs
@@ -1032,15 +1066,22 @@ if get_regional_pub_contracts is True:
         print(colored('\nget stations and structures', 'green'))
 
         c.execute('SELECT max(lastupdate) as create_date FROM universe_stations_temp')
-        latest = c.fetchone()[0]
-        now = datetime.datetime.now(datetime.timezone.utc)
-        delta = now - latest
-        print('since last update')
-        countdown(now, latest)
-        if delta.total_seconds() / 60 > 60 * 24 * 2:
 
-            location_list = df_contracts['start_location_id'].drop_duplicates().tolist()
-            engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
+        def_loco = pd.read_sql('universe_stations_temp', con=engine)
+
+        def_loco.drop_duplicates(subset='location_id')
+
+        before = len(def_loco.index)
+
+        location_list = df_contracts['start_location_id'].drop_duplicates().tolist()
+
+        location_list_old = def_loco['location_id'].tolist()
+
+        new = list(set(location_list) - set(location_list))
+
+        print('found {} new location'.format(len(new)))
+
+        if len(new) > 0:
 
             add_location(location_list)
         else:
@@ -1066,7 +1107,7 @@ if get_regional_pub_contracts is True:
                 new_contract.append(x)
 
         if len(new_contract) > 0:
-            print(colored('found {} new pub contract'.format(len(new_contract),'green')))
+            print(colored('found {} new pub contract'.format(len(new_contract), 'green')))
             op_name = 'get_contracts_public_items_contract_id'
 
             for item in new_contract:
@@ -1246,6 +1287,8 @@ if get_reg_orders is True:
     # check time
     c.execute('SELECT max(lastupdate) as lastupdate FROM tad_orders_temp')
     latest = c.fetchone()[0]
+    latest = datetime.datetime.strptime(''.join(latest.rsplit(':', 1)), '%Y-%m-%d %H:%M:%S.%f%z')
+
     now = datetime.datetime.now(datetime.timezone.utc)
     delta = now - latest
     print('since last update')
@@ -1263,13 +1306,11 @@ if get_reg_orders is True:
         ]
         stamp1 = datetime.datetime.now(datetime.timezone.utc)
         stamp0 = stamp1
+        # 1 get item from all region (pub ord)
 
-        try:
-            del dfs
-        except:
-            pass
-        # get item from all region (pub ord)
+        print(colored('\nget  public orders in region', 'green'))
 
+        url_cakes = []
         for item in target_reg:
             print(item)
             op = app.op['get_markets_region_id_orders'](region_id=item)
@@ -1315,95 +1356,87 @@ if get_reg_orders is True:
             if res.status == 200:
                 number_of_page = res.header['X-Pages'][0]
 
-                url_cakes = []
                 for page in range(1, number_of_page + 1):
                     url = 'https://esi.evetech.net/latest/markets/{}/orders/?datasource=tranquility&order_type=all&page={}'.format(
                         str(item), str(page))
                     url_cakes.append(url)
 
 
-                def get_pub_order(url):
+        def get_pub_order(url):
 
-                    for i in range(0, 2):
-                        while True:
-                            try:
-                                res = requests.get(url)
-                                if res.status_code == 200:
-                                    break
-                                else:
-                                    e_remain = int(res.headers.get("x-esi-error-limit-remain"))
-                                    e_reset = int(res.headers.get("x-esi-error-limit-reset"))
-                                    if e_remain < 50:
-                                        print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                                        time.sleep(e_reset)
-                                        print('sleep {}s'.format(e_reset))
-                                    continue
-                            except Exception as e:
-                                print('Error:' + str(e) + "\n")
-                                e_remain = int(res.headers.get("x-esi-error-limit-remain"))
-                                e_reset = int(res.headers.get("x-esi-error-limit-reset"))
-                                if e_remain < 50:
-                                    print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
-                                    time.sleep(e_reset)
-                                    print('sleep {}s'.format(e_reset))
-                                continue
+            for i in range(0, 2):
+                while True:
+                    try:
+                        res = requests.get(url)
+                        if res.status_code == 200:
                             break
+                        else:
+                            e_remain = int(res.headers.get("x-esi-error-limit-remain"))
+                            e_reset = int(res.headers.get("x-esi-error-limit-reset"))
+                            if e_remain < 50:
+                                print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+                                time.sleep(e_reset)
+                                print('sleep {}s'.format(e_reset))
+                            continue
+                    except Exception as e:
+                        print('Error:' + str(e) + "\n")
+                        e_remain = int(res.headers.get("x-esi-error-limit-remain"))
+                        e_reset = int(res.headers.get("x-esi-error-limit-reset"))
+                        if e_remain < 50:
+                            print('WARNING: x-esi-error-limit-remain {}'.format(e_remain))
+                            time.sleep(e_reset)
+                            print('sleep {}s'.format(e_reset))
+                        continue
+                    break
 
-                    if res.status_code == 200:
-                        df = pd.io.json.json_normalize(json.loads(res.content))
-                        return df
+            if res.status_code == 200:
+
+                # df = pd.io.json.json_normalize(json.loads(res.content))
+
+                df = json.loads(res.content)
+                return df
+                # try:
+                #     dfs = dfs.append(df, ignore_index=True, sort=False)
+                # except:
+                #     dfs = df
+            else:
+                print(colored('{} failed to get {}'.format(res.status_code, url), 'green'))
+                return {}
+
+
+        results_order = []
+        with ThreadPoolExecutor(max_workers=None) as executor:
+            stampin = datetime.datetime.now(datetime.timezone.utc)
+
+            # executor.map(get_pub_order, pages)
+
+            futures = [executor.submit(get_pub_order, url) for url in url_cakes]
+
+            for result in as_completed(futures):
+                if result._state == 'FINISHED':
+
+                    if isinstance(result._result, list):
                         # try:
-                        #     dfs = dfs.append(df, ignore_index=True, sort=False)
+                        #     df
                         # except:
-                        #     dfs = df
-                    else:
-                        print(colored('{} failed to get {}'.format(res.status_code, url), 'green'))
-                        return {}
+                        #     df = result._result
+                        #     continue
+                        #
+                        # try:
+                        #     df = df.append(result._result, ignore_index=True, sort=False)
+                        # except:
+                        #     pass
+                        for order in result._result:
+                            results_order.append(order)
 
+            stampout = datetime.datetime.now(datetime.timezone.utc)
+            countdown(stampout, stampin)
 
-                try:
-                    del df
-                except:
-                    pass
-
-                with ThreadPoolExecutor(max_workers=None) as executor:
-                    stampin = datetime.datetime.now(datetime.timezone.utc)
-
-                    # executor.map(get_pub_order, pages)
-
-                    futures = [executor.submit(get_pub_order, url) for url in url_cakes]
-
-
-                    for result in as_completed(futures):
-                        if result._state == 'FINISHED':
-                            try:
-                                df
-                            except:
-                                df = result._result
-                                continue
-
-                            try:
-                                df = df.append(result._result, ignore_index=True, sort=False)
-                            except:
-                                pass
-
-                    stampout = datetime.datetime.now(datetime.timezone.utc)
-                    countdown(stampout, stampin)
-                ### Test END
-            try:
-                dfs
-            except NameError:
-                dfs = df
-                continue
-            dfs = dfs.append(df, ignore_index=True, sort=False)
-
-            # stamp2 = datetime.datetime.now(datetime.timezone.utc)
-            # countdown(stamp2, stamp0)
-        df_pub_ord = dfs
-        del dfs
-
+        # 2 get item from all structures
+        stampA = datetime.datetime.now(datetime.timezone.utc)
         list_ids = pd.read_sql(
-            'SELECT DISTINCT location_id FROM universe_stations_temp WHERE universe_stations_temp.solar_system_id>0'.format(str('structure')),
+            'SELECT DISTINCT location_id FROM universe_stations_temp WHERE universe_stations_temp.solar_system_id>0'.format(
+                str('structure')),
             con=engine)
 
         opname = 'get_markets_structures_structure_id'
@@ -1430,96 +1463,158 @@ if get_reg_orders is True:
                 results = client.multi_request(operations)
 
                 for result in results:
-                    df = pd.io.json.json_normalize(json.loads(result[1].raw))
-                    try:
-                        dfs
-                    except:
-                        dfs = df
-                    dfs = dfs.append(df, ignore_index=True, sort=False)
+                    df = json.loads(result[1].raw)
+                    for order in df:
+                        results_order.append(order)
 
-        # get item from all region (structure ord)
+        stampB = datetime.datetime.now(datetime.timezone.utc)
+        countdown(stampB, stampA)
 
-        df_ord_stu = dfs
-        del dfs
-
-        df_ords = df_ord_stu.append(df_pub_ord, ignore_index=True, sort=False)
-
-        del df_ord_stu, df_pub_ord
-
-        # sum
-        stamp4 = datetime.datetime.now(datetime.timezone.utc)
+        # clear
+        df_ords = pd.DataFrame(results_order)
 
         rr0, cc0, = df_ords.shape
-
         df_ords = df_ords.drop_duplicates(subset=['order_id'], keep='first')
-
         rr1, cc1, = df_ords.shape
         print('add {} col, removed {} rows of duplicates'.format(cc0 - cc1, rr0 - rr1))
 
         # insert into postgres
 
-        # dfs['issued']= pd.to_datetime(dfs['issued'],utc=True).astype(pd.Timestamp)
+        df_ords['issued'] = pd.to_datetime(df_ords['issued'], utc=True).astype(pd.Timestamp)
 
         # dfs=dfs.fillna(0).astype({'system_id':'int64'}, errors='ignore')
-
-        df_ords['lastupdate'] = str(datetime.datetime.now(datetime.timezone.utc))
-        df_ords=df_ords.drop(columns='system_id')
+        df_ords['lastupdate'] = datetime.datetime.now(datetime.timezone.utc)
+        df_ords = df_ords.drop(columns='system_id')
         print('Found {} active orders'.format(len(df_ords.index)))
+
+        # df_ords['issued'] = df_ords['issued'].apply(lambda x: str(datetime.datetime.strptime(x, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)))
 
         # for idx, item in df_ords['system_id'].tolist():
         #     if isinstance(item,int) is False:
         #         print(idx,item)
 
         stamp5 = datetime.datetime.now(datetime.timezone.utc)
+        print('start to write PG')
 
-        engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
+        # conne = engine.raw_connection()
+        # conne.close()
 
-        df_ords.to_sql('tad_orders_temp', con=engine, index=False, if_exists='replace',
-                       dtype={'issued': sqlalchemy.types.TIMESTAMP(timezone=True),
-                              'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
-                              })
+        # ## method 1 pd.to_sql
 
-        # del df_ords
+        # def method1(df):
+        #     stampA = datetime.datetime.now(datetime.timezone.utc)
+        #
+        #     df.to_sql('tad_orders_temp', con=engine, index=False, if_exists='replace',
+        #               dtype={'issued': sqlalchemy.types.TIMESTAMP(timezone=True),
+        #                      'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
+        #                      })
+        #     stampB = datetime.datetime.now(datetime.timezone.utc)
+        #     print('write finished')
+        #
+        #     countdown(stampB, stampA)
 
+        # method1(df_ords)
+
+        ## method 2
+
+        tablename = 'tad_orders_temp'
+        df2csv2sql(df_ords, tablename)
+
+        # stampA = datetime.datetime.now(datetime.timezone.utc)
+        # cols = list(df_ords.columns.values)
+        #
+        # dict=df_ords.to_dict(orient='records')
+        # stampB = datetime.datetime.now(datetime.timezone.utc)
+        # print('pd used')
+        #
+        # countdown(stampB,stampA)
+        #
+        #
+        # #
+        # #
+        # #
+        # #
+        # #
         # db = 'neweden'
         # conn = psycopg2.connect(database=db, user="postgres")
         # c = conn.cursor()
-        # stamp3 = datetime.datetime.now(datetime.timezone.utc)
         #
-        # tablename = 'tad_reg_pub_orders'
+        # tablename = 'tad_orders_temp'
         # c.execute('select count(*) from %s' % (tablename))
         # before = c.fetchone()[0]
-        # cols = list(dfs.columns.values)
-        # dict = dfs.to_dict(orient='records')
         # now = datetime.datetime.now(datetime.timezone.utc)
-        # stamp4 = datetime.datetime.now(datetime.timezone.utc)
-        # print('pd used')
-        # countdown(stamp4, stamp3)
+        #
+        # stampA = datetime.datetime.now(datetime.timezone.utc)
+        # df_ords.head(0).to_sql(tablename, con=engine, if_exists='replace', index=False)  # truncates the table
+        #
+        # stampB = datetime.datetime.now(datetime.timezone.utc)
+        #
+        # countdown(stampB, stampA)
+        #
         #
         # for row in dict:
-        #     if isinstance(row['issued'], datetime.date) is False:  # make sure it is datatime
-        #         row['issued'] = datetime.datetime.strptime(str(row['issued']), '%Y-%m-%dT%H:%M:%SZ').replace(
-        #             tzinfo=datetime.timezone.utc)
+        #     # if isinstance(row['issued'], datetime.date) is False:  # make sure it is datatime
+        #     #     row['issued'] = datetime.datetime.strptime(str(row['issued']), '%Y-%m-%dT%H:%M:%SZ').replace(
+        #     #         tzinfo=datetime.timezone.utc)
+        #     row['lastupdate']=now
         #
-        #     sql = '''INSERT INTO %s (operator, create_date, %s)
-        #             VALUES (%s, %%(create_date)s ,%%(%s)s )
+        #     sql = '''INSERT INTO %s (%s)
+        #             VALUES (%%(%s)s )
         #             ON CONFLICT (order_id)
         #             DO UPDATE
         #             SET
-        #             update_date = EXCLUDED.create_date,
+        #             lastupdate = EXCLUDED.lastupdate,
         #             volume_remain=EXCLUDED.volume_remain
-        #                 ''' % (tablename, ',  '.join(row), char_id, ')s, %('.join(row))
+        #                 ''' % (tablename, ',  '.join(row), ')s, %('.join(row))
         #     # print(sql)
-        #     row['create_date'] = now
         #     c.execute(sql, row)
         # conn.commit()
         # c.execute('select count(*) from %s' % (tablename))
         # after = c.fetchone()[0]
         #
         # print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
+        #
+        # # del df_ords
+        #
+        # # db = 'neweden'
+        # # conn = psycopg2.connect(database=db, user="postgres")
+        # # c = conn.cursor()
+        # # stamp3 = datetime.datetime.now(datetime.timezone.utc)
+        # #
+        # # tablename = 'tad_reg_pub_orders'
+        # # c.execute('select count(*) from %s' % (tablename))
+        # # before = c.fetchone()[0]
+        # # cols = list(dfs.columns.values)
+        # # dict = dfs.to_dict(orient='records')
+        # # now = datetime.datetime.now(datetime.timezone.utc)
+        # # stamp4 = datetime.datetime.now(datetime.timezone.utc)
+        # # print('pd used')
+        # # countdown(stamp4, stamp3)
+        # #
+        # # for row in dict:
+        # #     if isinstance(row['issued'], datetime.date) is False:  # make sure it is datatime
+        # #         row['issued'] = datetime.datetime.strptime(str(row['issued']), '%Y-%m-%dT%H:%M:%SZ').replace(
+        # #             tzinfo=datetime.timezone.utc)
+        # #
+        # #     sql = '''INSERT INTO %s (operator, create_date, %s)
+        # #             VALUES (%s, %%(create_date)s ,%%(%s)s )
+        # #             ON CONFLICT (order_id)
+        # #             DO UPDATE
+        # #             SET
+        # #             update_date = EXCLUDED.create_date,
+        # #             volume_remain=EXCLUDED.volume_remain
+        # #                 ''' % (tablename, ',  '.join(row), char_id, ')s, %('.join(row))
+        # #     # print(sql)
+        # #     row['create_date'] = now
+        # #     c.execute(sql, row)
+        # # conn.commit()
+        # # c.execute('select count(*) from %s' % (tablename))
+        # # after = c.fetchone()[0]
+        # #
+        # # print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
 
         stamp6 = datetime.datetime.now(datetime.timezone.utc)
-        print('insert used:')
+        print('insert completed')
         countdown(stamp6, stamp5)
 
         print('total used')
@@ -1531,13 +1626,14 @@ get_markets_region_id_types = True
 print(colored('\nget_markets_region_id_types', 'green'))
 if get_markets_region_id_types is True:
 
-    c.execute('SELECT max(last_update) as last_update FROM tad_reg_order_history')
+    conn, c = lighter()
+    c.execute('SELECT max(lastupdate) as last_update FROM tad_reg_order_history')
     latest = c.fetchone()[0]
     now = datetime.datetime.now(datetime.timezone.utc)
     delta = now - latest
     print('since last update')
     countdown(now, latest)
-    if delta.total_seconds() / 60 > 24:
+    if delta.total_seconds() / 60 > 24 * 60:
 
         stamp1 = datetime.datetime.now(datetime.timezone.utc)
 
@@ -1708,8 +1804,6 @@ if get_markets_region_id_types is True:
                 # except Exception as e:
                 #     print(colored('Error: {}\n'.format(e), 'green'))
 
-
-
                 url_cakes.append(cake)
 
         stampB = datetime.datetime.now(datetime.timezone.utc)
@@ -1718,25 +1812,17 @@ if get_markets_region_id_types is True:
         # 2
         stampA = datetime.datetime.now(datetime.timezone.utc)
         print('get url')
-        with FuturesSession(executor=ThreadPoolExecutor(max_workers=100)) as session:
-
-
+        with FuturesSession(executor=ThreadPoolExecutor(max_workers=None)) as session:
 
             futures = [session.get(cake['url']) for cake in url_cakes]
 
-
-
-
-            results=[]
+            results = []
             for result in as_completed(futures):
                 results.append(result)
 
         stampB = datetime.datetime.now(datetime.timezone.utc)
 
         countdown(stampB, stampA)
-
-
-
 
 
         # 3
@@ -1753,8 +1839,10 @@ if get_markets_region_id_types is True:
             for df in dict:
                 df['type_id'] = nn[1]
                 df['region_id'] = nn[0]
-                df['lastupdate'] =now
+                df['lastupdate'] = now
                 big_dick.append(df)
+
+
         now = str(datetime.datetime.now(datetime.timezone.utc))
         stampA = datetime.datetime.now(datetime.timezone.utc)
         print('clear data')
@@ -1764,27 +1852,42 @@ if get_markets_region_id_types is True:
 
         stampB = datetime.datetime.now(datetime.timezone.utc)
 
-        countdown(stampB,stampA)
+        countdown(stampB, stampA)
 
         # 4
 
         stampA = datetime.datetime.now(datetime.timezone.utc)
         print('data 2 pd')
-        df=pd.DataFrame(big_dick)
+        df = pd.DataFrame(big_dick)
         stampB = datetime.datetime.now(datetime.timezone.utc)
 
         countdown(stampB, stampA)
 
-        stampA = datetime.datetime.now(datetime.timezone.utc)
+        # stampA = datetime.datetime.now(datetime.timezone.utc)
         print('pd 2 sql')
-        df.to_sql('tad_reg_order_history', con=engine, index=False, if_exists='replace',
-                       dtype={
-                           'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
-                              })
-        stampB = datetime.datetime.now(datetime.timezone.utc)
 
-        countdown(stampB, stampA)
+        tablename = 'tad_reg_order_history'
+        df2csv2sql(df, tablename)
 
+        # df.to_sql('tad_reg_order_history', con=engine, index=False, if_exists='replace', chunksize=5000,
+        #           dtype={'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
+        #                  })
+
+        # df.head(0).to_sql('tad_reg_order_history', con=engine, if_exists='replace', index=False)  # truncates the table
+        #
+        # conne = engine.raw_connection()
+        # cur = conne.cursor()
+        # output = io.StringIO()
+        # df.to_csv(output, sep='\t', header=False, index=False)
+        # output.seek(0)
+        # # contents = output.getvalue()
+        # cur.copy_from(output, 'tad_orders_temp', null="")  # null values become ''
+        # conne.commit()
+        # conne.close()
+
+        # stampB = datetime.datetime.now(datetime.timezone.utc)
+        #
+        # countdown(stampB, stampA)
 
         #
         # #
@@ -2090,6 +2193,8 @@ if get_markets_region_id_types is True:
         countdown(stamp2, stamp1)
     else:
         print('not yet updated in real world')
+
+
 # %% start to analysis
 def ana():
     ## find the type_id list for det
@@ -2105,8 +2210,6 @@ def ana():
         # 10000061  # Tenerifis
     ]
     # find T2 things exist in det
-
-    engine = sqlalchemy.engine.create_engine('postgresql://postgres@localhost:5432/neweden')
 
     # df_ids=pd.read_sql('universe_ids', con=engine)
     #
@@ -2146,7 +2249,6 @@ def ana():
     #
     # print(df.head())
 
-
     df_ids = pd.read_sql('universe_ids', con=engine)
 
     df_ids = df_ids[['type_id', 'type_name', 'group_name',
@@ -2178,75 +2280,79 @@ def ana():
     sell = anly[anly['is_buy_order'] == False]
     buy = anly[anly['is_buy_order'] == True]
 
-
     # df=buy.groupby(['type_id'], as_index=False).agg({'volume_remain':{'total':'sum'},
     #                                                       'price':{'min':'min','max':'max'},
     #                                                       'order_id':{'count':'count'}
     #                                                       })
 
-    anly_buy=buy.groupby(['type_id','type_name','cat_name','name'], as_index=False).agg({'volume_remain':'sum',
-                                                          'price':['min','max'],
-                                                          'order_id':'count'
-                                                          })
+    anly_buy = buy.groupby(['type_id', 'type_name', 'cat_name', 'name'], as_index=False).agg({'volume_remain': 'sum',
+                                                                                              'price': ['min', 'max'],
+                                                                                              'order_id': 'count'
+                                                                                              })
     anly_buy.columns = ["_".join(x) for x in anly_buy.columns.ravel()]
 
-    anly_buy_qrfj=anly_buy[anly_buy['name_']=='QRFJ-Q - WC starcity']
+    anly_buy_qrfj = anly_buy[anly_buy['name_'] == 'QRFJ-Q - WC starcity']
 
-    anly_buy_jita=anly_buy[anly_buy['name_']!='QRFJ-Q - WC starcity']
+    anly_buy_jita = anly_buy[anly_buy['name_'] != 'QRFJ-Q - WC starcity']
 
-
-    anly_sell=sell.groupby(['type_id','type_name','cat_name','name'], as_index=False).agg({'volume_remain':'sum',
-                                                          'price':['min','max'],
-                                                          'order_id':'count'
-                                                          })
+    anly_sell = sell.groupby(['type_id', 'type_name', 'cat_name', 'name'], as_index=False).agg({'volume_remain': 'sum',
+                                                                                                'price': ['min', 'max'],
+                                                                                                'order_id': 'count'
+                                                                                                })
 
     anly_sell.columns = ["_".join(x) for x in anly_sell.columns.ravel()]
 
-    anly_sell_qrfj=anly_sell[anly_sell['name_']=='QRFJ-Q - WC starcity']
+    anly_sell_qrfj = anly_sell[anly_sell['name_'] == 'QRFJ-Q - WC starcity']
 
-    anly_sell_jita=anly_sell[anly_sell['name_']!='QRFJ-Q - WC starcity']
+    anly_sell_jita = anly_sell[anly_sell['name_'] != 'QRFJ-Q - WC starcity']
 
-    #Export
-    #1
-    df_q2j_s2b=pd.merge(anly_sell_qrfj, anly_buy_jita, on='type_id_')
-    df_q2j_s2b['raw_profit_q2j_s2b']= df_q2j_s2b['price_max_y'] - df_q2j_s2b['price_min_x']
-    df_q2j_s2b=pd.merge(df_q2j_s2b, df_ids, left_on='type_id_', right_on='type_id')
-    df_q2j_s2b['raw_margin_q2j_s2b']=(df_q2j_s2b['price_max_y'] - df_q2j_s2b['price_min_x'])/df_q2j_s2b['price_min_x']
-    df_q2j_s2b=df_q2j_s2b.sort_values(by = ['raw_margin_q2j_s2b'], ascending=False)
+    # Export
+    # 1
+    df_q2j_s2b = pd.merge(anly_sell_qrfj, anly_buy_jita, on='type_id_')
+    df_q2j_s2b['raw_profit_q2j_s2b'] = df_q2j_s2b['price_max_y'] - df_q2j_s2b['price_min_x']
+    df_q2j_s2b = pd.merge(df_q2j_s2b, df_ids, left_on='type_id_', right_on='type_id')
+    df_q2j_s2b['raw_margin_q2j_s2b'] = (df_q2j_s2b['price_max_y'] - df_q2j_s2b['price_min_x']) / df_q2j_s2b[
+        'price_min_x']
+    df_q2j_s2b = df_q2j_s2b.sort_values(by=['raw_margin_q2j_s2b'], ascending=False)
 
     df_q2j_s2b.to_sql('df_q2j_s2b', con=engine, index=False, if_exists='replace')
 
-    #2
-    df_q2j_s2s=pd.merge(anly_sell_qrfj, anly_sell_jita, on='type_id_')
-    df_q2j_s2s['raw_profit-q2j_s2s']= df_q2j_s2s['price_min_y'] - df_q2j_s2s['price_min_x']
-    df_q2j_s2s=pd.merge(df_q2j_s2s, df_ids, left_on='type_id_', right_on='type_id')
-    df_q2j_s2s['raw_margin-q2j_s2s']=(df_q2j_s2s['price_min_y'] - df_q2j_s2s['price_min_x'])/df_q2j_s2s['price_min_x']
-    df_q2j_s2s=df_q2j_s2s.sort_values(by = ['raw_margin-q2j_s2s'], ascending=False)
+    # 2
+    df_q2j_s2s = pd.merge(anly_sell_qrfj, anly_sell_jita, on='type_id_')
+    df_q2j_s2s['raw_profit-q2j_s2s'] = df_q2j_s2s['price_min_y'] - df_q2j_s2s['price_min_x']
+    df_q2j_s2s = pd.merge(df_q2j_s2s, df_ids, left_on='type_id_', right_on='type_id')
+    df_q2j_s2s['raw_margin-q2j_s2s'] = (df_q2j_s2s['price_min_y'] - df_q2j_s2s['price_min_x']) / df_q2j_s2s[
+        'price_min_x']
+    df_q2j_s2s = df_q2j_s2s.sort_values(by=['raw_margin-q2j_s2s'], ascending=False)
 
     df_q2j_s2s.to_sql('df_q2j_s2s', con=engine, index=False, if_exists='replace')
 
-
     # import
     # 3
-    df_j2q_b2s=pd.merge(anly_buy_jita,anly_sell_qrfj, on='type_id_')
-    df_j2q_b2s['raw_profit_j2q_b2s']= df_j2q_b2s['price_min_y'] - df_j2q_b2s['price_max_x']
-    df_j2q_b2s=pd.merge(df_j2q_b2s, df_ids, left_on='type_id_', right_on='type_id')
-    df_j2q_b2s['raw_margin_j2q_b2s']=df_j2q_b2s['raw_profit_j2q_b2s']/df_j2q_b2s['price_max_x']
-    df_j2q_b2s['profit-ship_j2q_b2s']=df_j2q_b2s['raw_profit_j2q_b2s']-df_j2q_b2s['packaged_volume']*1400
-    df_j2q_b2s['margin-ship_j2q_b2s']=df_j2q_b2s['profit-ship_j2q_b2s']/df_j2q_b2s['price_min_x']
-    df_j2q_b2s=df_j2q_b2s.sort_values(by = ['margin-ship_j2q_b2s'], ascending=False)
+    df_j2q_b2s = pd.merge(anly_buy_jita, anly_sell_qrfj, on='type_id_')
+    df_j2q_b2s['raw_profit_j2q_b2s'] = df_j2q_b2s['price_min_y'] - df_j2q_b2s['price_max_x']
+    df_j2q_b2s = pd.merge(df_j2q_b2s, df_ids, left_on='type_id_', right_on='type_id')
+    df_j2q_b2s['raw_margin_j2q_b2s'] = df_j2q_b2s['raw_profit_j2q_b2s'] / df_j2q_b2s['price_max_x']
+    df_j2q_b2s['profit-ship_j2q_b2s'] = df_j2q_b2s['raw_profit_j2q_b2s'] - df_j2q_b2s['packaged_volume'] * 1400
+    df_j2q_b2s['margin-ship_j2q_b2s'] = df_j2q_b2s['profit-ship_j2q_b2s'] / df_j2q_b2s['price_min_x']
+    df_j2q_b2s = df_j2q_b2s.sort_values(by=['margin-ship_j2q_b2s'], ascending=False)
 
     df_j2q_b2s.to_sql('df_j2q_b2s', con=engine, index=False, if_exists='replace')
 
     # 4
-    df_j2q_s2s=pd.merge(anly_sell_jita,anly_sell_qrfj, on='type_id_')
-    df_j2q_s2s['raw_profit_j2q_s2s']= df_j2q_s2s['price_min_y'] - df_j2q_s2s['price_min_x']
-    df_j2q_s2s=pd.merge(df_j2q_s2s, df_ids, left_on='type_id_', right_on='type_id')
-    df_j2q_s2s['raw_margin_j2q_s2s']=df_j2q_s2s['raw_profit_j2q_s2s']/df_j2q_s2s['price_min_x']
-    df_j2q_s2s['profit-ship_j2q_s2s']=df_j2q_s2s['raw_profit_j2q_s2s']-df_j2q_s2s['packaged_volume']*1400
-    df_j2q_s2s['margin-ship_j2q_s2s']=df_j2q_s2s['profit-ship_j2q_s2s']/df_j2q_s2s['price_min_x']
-    df_j2q_s2s=df_j2q_s2s.sort_values(by = ['margin-ship_j2q_s2s'], ascending=False)
+    df_j2q_s2s = pd.merge(anly_sell_jita, anly_sell_qrfj, on='type_id_')
+    df_j2q_s2s['raw_profit_j2q_s2s'] = df_j2q_s2s['price_min_y'] - df_j2q_s2s['price_min_x']
+    df_j2q_s2s = pd.merge(df_j2q_s2s, df_ids, left_on='type_id_', right_on='type_id')
+    df_j2q_s2s['raw_margin_j2q_s2s'] = df_j2q_s2s['raw_profit_j2q_s2s'] / df_j2q_s2s['price_min_x']
+    df_j2q_s2s['profit-ship_j2q_s2s'] = df_j2q_s2s['raw_profit_j2q_s2s'] - df_j2q_s2s['packaged_volume'] * 1400
+    df_j2q_s2s['margin-ship_j2q_s2s'] = df_j2q_s2s['profit-ship_j2q_s2s'] / df_j2q_s2s['price_min_x']
+    df_j2q_s2s = df_j2q_s2s.sort_values(by=['margin-ship_j2q_s2s'], ascending=False)
 
     df_j2q_s2s.to_sql('df_j2q_s2s', con=engine, index=False, if_exists='replace')
 
 
+# %% end
+stamp99 = datetime.datetime.now(datetime.timezone.utc)
+print(colored('\nMission Complete', 'green'))
+
+countdown(stamp99, stamp0)
