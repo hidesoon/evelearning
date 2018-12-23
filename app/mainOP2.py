@@ -8,7 +8,8 @@ from concurrent.futures import as_completed, ThreadPoolExecutor
 import pandas as pd
 import psycopg2
 import requests
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
+from sqlalchemy import types as tp
 from esipy import App
 from esipy import EsiClient
 from esipy import EsiSecurity
@@ -170,7 +171,7 @@ def add_location(location_list):
     # print('hehe')
 
     def_loc.to_sql('universe_stations_temp', con=engine, index=False, if_exists='replace',
-                   dtype={'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
+                   dtype={'lastupdate': tp.TIMESTAMP(timezone=True)
                           })
 
     # print('baba')
@@ -202,7 +203,7 @@ conn, c = lighter()
 # dont forget to import event
 
 
-engine = create_engine('postgresql+psycopg2://postgres@localhost:5432/neweden')
+engine = create_engine('postgresql://postgres@localhost:5432/neweden')
 
 
 def df2csv2sql(df, tablename):
@@ -663,56 +664,6 @@ if get_geoinfo is True:
     else:
         print('pls check your errors first')
 
-# %% get my transaction record
-get_tran_record = True
-
-if get_tran_record is True:
-    print(colored('\nget my transaction record', 'green'))
-    stamp1 = datetime.datetime.now(datetime.timezone.utc)
-    opn = 'get_characters_character_id_wallet_transactions'
-    api_info = security.verify()
-    char_id = api_info['sub'].split(':')[2]
-    try:
-        op = app.op[opn](character_id=char_id)
-        res = client.request(op)
-
-        # if res.status == 200:
-    except Exception as e:
-        print(e)
-    res = json.loads(res.raw)
-    cols = list(res[0].keys())
-    tablename = 'tad_wal_tran'
-    c.execute('select count(*) from %s' % (tablename))
-    before = c.fetchone()[0]
-
-    for row in res:
-        if isinstance(row['date'], datetime.date) is False:  # make sure it is datatime
-            row['date'] = datetime.datetime.strptime(row['date'], '%Y-%m-%dT%H:%M:%SZ').replace(
-                tzinfo=datetime.timezone.utc)
-        sql = '''INSERT INTO %s (operator, %s) 
-        VALUES (%s ,%%(%s)s ) 
-        ON CONFLICT (transaction_id,is_buy) 
-        DO nothing 
-            ''' % (tablename, ',  '.join(row), char_id, ')s, %('.join(row))
-        # print(sql)
-        # print(row)
-        c.execute(sql, row)
-    conn.commit()
-    c.execute('select count(*) from %s' % (tablename))
-    after = c.fetchone()[0]
-    stamp2 = datetime.datetime.now(datetime.timezone.utc)
-
-    print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
-    countdown(stamp2, stamp1)
-
-    # check location
-    location_list = []
-    for row in res:
-        if row['location_id'] not in location_list:
-            location_list.append(row['location_id'])
-
-    add_location(location_list)
-    del res, results
 
 # %% get alliance and corplist
 get_coop = True
@@ -895,6 +846,90 @@ if get_coop is True:
     else:
         print('dont too hurry :)')
 
+# %% get my transaction record
+get_tran_record = True
+
+if get_tran_record is True:
+    print(colored('\nget my transaction record', 'green'))
+    stamp1 = datetime.datetime.now(datetime.timezone.utc)
+    opn = 'get_characters_character_id_wallet_transactions'
+    api_info = security.verify()
+    char_id = api_info['sub'].split(':')[2]
+    try:
+        op = app.op[opn](character_id=char_id)
+        res = client.request(op)
+
+        # if res.status == 200:
+    except Exception as e:
+        print(e)
+    res = json.loads(res.raw)
+    cols = list(res[0].keys())
+    tablename = 'tad_wal_tran'
+    c.execute('select count(*) from %s' % (tablename))
+    before = c.fetchone()[0]
+
+    for row in res:
+        if isinstance(row['date'], datetime.date) is False:  # make sure it is datatime
+            row['date'] = datetime.datetime.strptime(row['date'], '%Y-%m-%dT%H:%M:%SZ').replace(
+                tzinfo=datetime.timezone.utc)
+        sql = '''INSERT INTO %s (operator, %s) 
+        VALUES (%s ,%%(%s)s ) 
+        ON CONFLICT (transaction_id,is_buy) 
+        DO nothing 
+            ''' % (tablename, ',  '.join(row), char_id, ')s, %('.join(row))
+        # print(sql)
+        # print(row)
+        c.execute(sql, row)
+    conn.commit()
+    c.execute('select count(*) from %s' % (tablename))
+    after = c.fetchone()[0]
+    stamp2 = datetime.datetime.now(datetime.timezone.utc)
+
+    print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
+    countdown(stamp2, stamp1)
+
+    # check location
+    location_list = []
+    for row in res:
+        if row['location_id'] not in location_list:
+            location_list.append(row['location_id'])
+
+    add_location(location_list)
+    try:
+        del res, results
+    except:
+        pass
+
+    #List open market orders placed by a character
+    print(colored('\nget my order record', 'green'))
+    stampA = datetime.datetime.now(datetime.timezone.utc)
+    opn = 'get_characters_character_id_orders'
+    try:
+        op = app.op[opn](character_id=char_id)
+        res = client.request(op)
+
+        # if res.status == 200:
+    except Exception as e:
+        print(e)
+    df = pd.io.json.json_normalize(json.loads(res.raw))
+
+    # 2 pg
+
+    tablename = 'tad_my_orders'
+    now = datetime.datetime.now(datetime.timezone.utc)
+    df['lastupdate'] =now
+
+    df.to_sql(tablename, con=engine, index=False, if_exists='replace',
+                            dtype={'lastupdate': tp.TIMESTAMP(timezone=True)
+                                   })
+
+
+
+
+
+
+
+
 # %% get regional public contract
 
 get_regional_pub_contracts = True
@@ -1047,7 +1082,9 @@ if get_regional_pub_contracts is True:
             sql = '''INSERT INTO %s (%s) 
                         VALUES ( %%(%s)s ) 
                         ON CONFLICT (%s) 
-                        DO NOTHING 
+                        DO UPDATE
+                        SET
+                        last_update = EXCLUDED.last_update
                             ''' % (tablename, ',  '.join(row), ')s, %('.join(row), tag_unique)
             # print(sql)
             c.execute(sql, row)
@@ -1518,7 +1555,8 @@ if get_reg_orders is True:
         ## method 2
 
         tablename = 'tad_orders_temp'
-        df2csv2sql(df_ords, tablename)
+        df=df_ords
+        df2csv2sql(df, tablename)
 
         # stampA = datetime.datetime.now(datetime.timezone.utc)
         # cols = list(df_ords.columns.values)
@@ -1629,7 +1667,10 @@ if get_markets_region_id_types is True:
     conn, c = lighter()
     c.execute('SELECT max(lastupdate) as last_update FROM tad_reg_order_history')
     latest = c.fetchone()[0]
+    latest = datetime.datetime.strptime(''.join(latest.rsplit(':', 1)), '%Y-%m-%d %H:%M:%S.%f%z')
+
     now = datetime.datetime.now(datetime.timezone.utc)
+
     delta = now - latest
     print('since last update')
     countdown(now, latest)
@@ -2115,7 +2156,6 @@ if get_markets_region_id_types is True:
         # c.execute('select count(*) from %s' % (tablename))
         # before = c.fetchone()[0]
         #
-        # ## TODO change to pd.to_sql
         # dfs['lastupdate']=now
         # dfs.to_sql(tablename, con=engine, index=False, if_exists='replace')
         #
