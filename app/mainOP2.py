@@ -8,12 +8,12 @@ from concurrent.futures import as_completed, ThreadPoolExecutor
 import pandas as pd
 import psycopg2
 import requests
-from sqlalchemy import create_engine
-from sqlalchemy import types as tp
 from esipy import App
 from esipy import EsiClient
 from esipy import EsiSecurity
 from requests_futures.sessions import FuturesSession
+from sqlalchemy import create_engine
+from sqlalchemy import types as tp
 from termcolor import colored
 
 
@@ -183,11 +183,8 @@ def add_location(location_list):
     countdown(stamp3, stamp2)
 
 
-
-
-
 # %% connect DB
-stamp0 = datetime.datetime.now(datetime.timezone.utc)
+stamp00 = datetime.datetime.now(datetime.timezone.utc)
 stamp1 = datetime.datetime.now(datetime.timezone.utc)
 
 
@@ -206,20 +203,22 @@ conn, c = lighter()
 engine = create_engine('postgresql://postgres@localhost:5432/neweden')
 
 
-def df2csv2sql(df, tablename):
+def df2csv2sql(df_input, tablename):
     stampA = datetime.datetime.now(datetime.timezone.utc)
-    df.head(0).to_sql(tablename, con=engine, if_exists='replace', index=False)  # truncates the table
+    # df_input.head(0).to_sql(tablename, con=engine, if_exists='replace', index=False)  # truncates the table
 
+    engine.execute('TRUNCATE ONLY %s' % tablename)
     print('table replaced')
 
     conne = engine.raw_connection()
     cur = conne.cursor()
+
     try:
         del output
     except:
         pass
     output = io.StringIO()
-    df.to_csv(output, sep='\t', header=False, index=False)
+    df_input.to_csv(output, sep='\t', header=False, index=False)
     output.seek(0)
     # contents = output.getvalue()
     cur.copy_from(output, tablename, null="")  # null values become ''
@@ -229,7 +228,6 @@ def df2csv2sql(df, tablename):
     print('write finished')
     countdown(stampB, stampA)
     cur.close()
-    conne.close()
 
 
 ## check now
@@ -284,6 +282,7 @@ expires_in = %s,
     tokens['access_token'], tokens['expires_in'], tokens['token_type'], tokens['refresh_token'],
     datetime.datetime.now(datetime.timezone.utc)))
 conn.commit()
+del token, tokens
 stamp2 = datetime.datetime.now(datetime.timezone.utc)
 countdown(stamp2, stamp1)
 # %% get all type_id
@@ -319,10 +318,10 @@ if get_type_id is True:
     tablename = 'universe_type_ids'
     c.execute('SELECT type_id from %s' % tablename)
     list_typeid_db = c.fetchall()
-    old_list = list()
+    list_old = list()
     for it in list_typeid_db:
-        old_list.append(it[0])
-    diff = list(set(list_typeid) - set(old_list))
+        list_old.append(it[0])
+    diff = list(set(list_typeid) - set(list_old))
 
     print('found {} new type_id'.format(len(diff)))
     stamp2 = datetime.datetime.now(datetime.timezone.utc)
@@ -494,6 +493,7 @@ if get_type_id is True:
         df.to_sql('universe_ids', con=engine, index=False, if_exists='replace')
 
         del df, df_cat, df_type, df_groups
+        del cols, get_type_id, it, list_old, list_typeid, list_typeid_db, number_of_page, op, operations, page, res, results, t_id, tokens
 # %% get all regions names
 get_geoinfo = False
 if get_geoinfo is True:
@@ -664,7 +664,6 @@ if get_geoinfo is True:
     else:
         print('pls check your errors first')
 
-
 # %% get alliance and corplist
 get_coop = True
 if get_coop is True:
@@ -822,7 +821,29 @@ if get_coop is True:
 
         df = pd.DataFrame(dict)
 
-        df2csv2sql(df, tablename)
+        stampin = datetime.datetime.now(datetime.timezone.utc)
+        conn, c = lighter()
+        c.execute('TRUNCATE ONLY %s' % tablename)
+        conn.commit()
+        print('TRUNCATED')
+
+        try:
+            del output
+        except:
+            pass
+        output = io.StringIO()
+        df.to_csv(output, sep='\t', header=False, index=False)
+        output.seek(0)
+        # contents = output.getvalue()
+        c.copy_from(output, tablename, null="")  # null values become ''
+        conn.commit()
+        conn.close()
+        c.close()
+        stampout = datetime.datetime.now(datetime.timezone.utc)
+        print('insert completed')
+        countdown(stampout, stampin)
+
+
         c.execute('select count(*) from %s' % (tablename))
         after = c.fetchone()[0]
 
@@ -833,11 +854,11 @@ if get_coop is True:
         sql = 'SELECT corporation_id FROM co_cooplist'
         c.execute(sql)
         old = c.fetchall()
-        old_list = []
+        list_old = []
         for it in old:
-            old_list.append(it[0])
+            list_old.append(it[0])
 
-        if set(new) == set(old_list) is False:
+        if set(new) == set(list_old) is False:
             print('Need check the corp history')
         stamp4 = datetime.datetime.now(datetime.timezone.utc)
         print('insert used:')
@@ -900,7 +921,7 @@ if get_tran_record is True:
     except:
         pass
 
-    #List open market orders placed by a character
+    # List open market orders placed by a character
     print(colored('\nget my order record', 'green'))
     stampA = datetime.datetime.now(datetime.timezone.utc)
     opn = 'get_characters_character_id_orders'
@@ -917,18 +938,16 @@ if get_tran_record is True:
 
     tablename = 'tad_my_orders'
     now = datetime.datetime.now(datetime.timezone.utc)
-    df['lastupdate'] =now
+    df['lastupdate'] = now
 
     df.to_sql(tablename, con=engine, index=False, if_exists='replace',
-                            dtype={'lastupdate': tp.TIMESTAMP(timezone=True)
-                                   })
+              dtype={'lastupdate': tp.TIMESTAMP(timezone=True)
+                     })
 
-
-
-
-
-
-
+    try:
+        del before, cols, df, res
+    except:
+        pass
 
 # %% get regional public contract
 
@@ -1313,7 +1332,8 @@ if get_regional_pub_contracts is True:
         print('dont too hurry :)')
 
 try:
-    del df, df_contract_item, df_contract_items, df_contracts, dfs, res,
+    del def_loco, dict, exlist, list_contract, location_list, location_list_old, new, new_contract,
+    del df, df_contract_item, df_contract_items, df_contracts, dfs, res
 except:
     pass
 # %% get public orders
@@ -1324,6 +1344,7 @@ if get_reg_orders is True:
     # check time
     c.execute('SELECT max(lastupdate) as lastupdate FROM tad_orders_temp')
     latest = c.fetchone()[0]
+    # latest=latest+':00'
     latest = datetime.datetime.strptime(''.join(latest.rsplit(':', 1)), '%Y-%m-%d %H:%M:%S.%f%z')
 
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -1442,8 +1463,8 @@ if get_reg_orders is True:
 
 
         results_order = []
+        stampin = datetime.datetime.now(datetime.timezone.utc)
         with ThreadPoolExecutor(max_workers=None) as executor:
-            stampin = datetime.datetime.now(datetime.timezone.utc)
 
             # executor.map(get_pub_order, pages)
 
@@ -1466,8 +1487,8 @@ if get_reg_orders is True:
                         for order in result._result:
                             results_order.append(order)
 
-            stampout = datetime.datetime.now(datetime.timezone.utc)
-            countdown(stampout, stampin)
+        stampout = datetime.datetime.now(datetime.timezone.utc)
+        countdown(stampout, stampin)
 
         # 2 get item from all structures
         stampA = datetime.datetime.now(datetime.timezone.utc)
@@ -1522,7 +1543,34 @@ if get_reg_orders is True:
         # dfs=dfs.fillna(0).astype({'system_id':'int64'}, errors='ignore')
         df_ords['lastupdate'] = datetime.datetime.now(datetime.timezone.utc)
         df_ords = df_ords.drop(columns='system_id')
-        print('Found {} active orders'.format(len(df_ords.index)))
+        num = len(df_ords.index)
+        print('Found {} active orders'.format(num))
+
+        tablename = 'tad_orders_temp'
+        df = df_ords
+
+        stampin = datetime.datetime.now(datetime.timezone.utc)
+        df_old = pd.read_sql('tad_orders_temp', con=engine)
+        list_old = df_old['order_id'].values
+        list_new = df['order_id'].values
+        stampout = datetime.datetime.now(datetime.timezone.utc)
+        countdown(stampout, stampin)
+
+        stampin = datetime.datetime.now(datetime.timezone.utc)
+        s = set(list_new)
+        list_expried = [x for x in list_old if x not in s]
+        list_update = [x for x in list_old if x in s]
+        print('Found {} inactive orders'.format(len(list_expried)))
+        print('Updated {} exist orders'.format(len(list_update)))
+        print('Found {} new orders'.format(num - len(list_update)))
+        stampout = datetime.datetime.now(datetime.timezone.utc)
+        countdown(stampout, stampin)
+
+        df_old = df_old[df_old['order_id'].isin(list_expried)]
+
+        df_old['is_out'] = True
+        df['is_out'] = False
+        df = df.append(df_old, ignore_index=True, sort=False)
 
         # df_ords['issued'] = df_ords['issued'].apply(lambda x: str(datetime.datetime.strptime(x, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)))
 
@@ -1531,6 +1579,7 @@ if get_reg_orders is True:
         #         print(idx,item)
 
         stamp5 = datetime.datetime.now(datetime.timezone.utc)
+
         print('start to write PG')
 
         # conne = engine.raw_connection()
@@ -1554,9 +1603,90 @@ if get_reg_orders is True:
 
         ## method 2
 
-        tablename = 'tad_orders_temp'
-        df=df_ords
-        df2csv2sql(df, tablename)
+        # stampin = datetime.datetime.now(datetime.timezone.utc)
+        # list_expried = list(set(list_old) - set(list_new))
+        # stampout = datetime.datetime.now(datetime.timezone.utc)
+        # countdown(stampout, stampin)
+
+        # stampin = datetime.datetime.now(datetime.timezone.utc)
+        # list_expried = [item for item in list_old if item not in list_new]
+        # stampout = datetime.datetime.now(datetime.timezone.utc)
+        # countdown(stampout, stampin)
+
+        # method 3
+        # stampin = datetime.datetime.now(datetime.timezone.utc)
+        # conn, c = lighter()
+        # c.execute('TRUNCATE ONLY %s' % tablename)
+        # conn.commit()
+        # print('TRUNCATED')
+        #
+        # df_columns = list(df)
+        #
+        # # create (col1,col2,...)
+        # columns = ",".join(df_columns)
+        #
+        # # create VALUES('%s', '%s",...) one '%s' per column
+        # values = "VALUES({})".format(",".join(["%s" for _ in df_columns]))
+        #
+        # # create INSERT INTO table (columns) VALUES('%s',...)
+        # # insert_stmt = "INSERT INTO {} ({}) {} ON CONFLICT (order_id,is_buy_order) DO UPDATE SET lastupdate = EXCLUDED.lastupdate, volume_remain=EXCLUDED.volume_remain".format(tablename, columns, values)
+        # insert_stmt = "INSERT INTO {} ({}) {}".format(tablename, columns, values)
+        #
+        #
+        # psycopg2.extras.execute_batch(c, insert_stmt, df.values)
+        # conn.commit()
+        # c.close()
+        # stampout = datetime.datetime.now(datetime.timezone.utc)
+        # print('insert completed')
+        # countdown(stampout, stampin)
+
+        stampin = datetime.datetime.now(datetime.timezone.utc)
+        conn, c = lighter()
+        c.execute('TRUNCATE ONLY %s' % tablename)
+        conn.commit()
+        print('TRUNCATED')
+
+        try:
+            del output
+        except:
+            pass
+        output = io.StringIO()
+        df.to_csv(output, sep='\t', header=False, index=False)
+        output.seek(0)
+        # contents = output.getvalue()
+        c.copy_from(output, tablename, null="")  # null values become ''
+        conn.commit()
+        conn.close()
+        c.close()
+        stampout = datetime.datetime.now(datetime.timezone.utc)
+        print('insert completed')
+        countdown(stampout, stampin)
+
+        # df2csv2sql(df, tablename)
+        #
+        # stampA = datetime.datetime.now(datetime.timezone.utc)
+        # df.head(0).to_sql(tablename, con=engine, if_exists='replace', index=False)  # truncates the table
+        #
+        # print('table replaced')
+        #
+        # conne = engine.raw_connection()
+        # cur = conne.cursor()
+        # try:
+        #     del output
+        # except:
+        #     pass
+        # output = io.StringIO()
+        # df.to_csv(output, sep='\t', header=False, index=False)
+        # output.seek(0)
+        # # contents = output.getvalue()
+        # cur.copy_from(output, tablename, null="")  # null values become ''
+        # conne.commit()
+        # conne.close()
+        # stampB = datetime.datetime.now(datetime.timezone.utc)
+        # print('write finished')
+        # countdown(stampB, stampA)
+        # cur.close()
+        # conne.close()
 
         # stampA = datetime.datetime.now(datetime.timezone.utc)
         # cols = list(df_ords.columns.values)
@@ -1651,9 +1781,12 @@ if get_reg_orders is True:
         # #
         # # print(colored('{} new records in {}'.format(after - before, tablename), 'green'))
 
+        try:
+            del df, df_columns, df_old, df_ords, executor, futures, list_expried, list_ids, list_new, list_old, list_update, operations, res, result, results, results_order, row, s
+        except:
+            pass
+
         stamp6 = datetime.datetime.now(datetime.timezone.utc)
-        print('insert completed')
-        countdown(stamp6, stamp5)
 
         print('total used')
         countdown(stamp6, stamp1)
@@ -1675,6 +1808,7 @@ if get_markets_region_id_types is True:
     print('since last update')
     countdown(now, latest)
     if delta.total_seconds() / 60 > 24 * 60:
+    # if delta.total_seconds() / 60 > 1:
 
         stamp1 = datetime.datetime.now(datetime.timezone.utc)
 
@@ -1908,7 +2042,46 @@ if get_markets_region_id_types is True:
         print('pd 2 sql')
 
         tablename = 'tad_reg_order_history'
-        df2csv2sql(df, tablename)
+
+        stampin = datetime.datetime.now(datetime.timezone.utc)
+        conn, c = lighter()
+        c.execute('TRUNCATE ONLY %s' % tablename)
+        conn.commit()
+        print('TRUNCATED')
+
+        try:
+            del output
+        except:
+            pass
+        output = io.StringIO()
+        df.to_csv(output, sep='\t', header=False, index=False)
+        output.seek(0)
+        # contents = output.getvalue()
+        c.copy_from(output, tablename, null="")  # null values become ''
+        conn.commit()
+        conn.close()
+        c.close()
+        stampout = datetime.datetime.now(datetime.timezone.utc)
+        print('insert completed')
+        countdown(stampout, stampin)
+
+        # df_columns = list(df)
+        #
+        # # create (col1,col2,...)
+        # columns = ",".join(df_columns)
+        #
+        # # create VALUES('%s', '%s",...) one '%s' per column
+        # values = "VALUES({})".format(",".join(["%s" for _ in df_columns]))
+        #
+        # # create INSERT INTO table (columns) VALUES('%s',...)
+        # insert_stmt = "INSERT INTO {} ({}) {}".format(tablename, columns, values)
+        #
+        # psycopg2.extras.execute_batch(c, insert_stmt, df.values)
+        # conn.commit()
+        # c.close()
+        # stampout = datetime.datetime.now(datetime.timezone.utc)
+        # print('insert completed')
+        # countdown(stampout, stampin)
 
         # df.to_sql('tad_reg_order_history', con=engine, index=False, if_exists='replace', chunksize=5000,
         #           dtype={'lastupdate': sqlalchemy.types.TIMESTAMP(timezone=True)
@@ -2395,4 +2568,4 @@ def ana():
 stamp99 = datetime.datetime.now(datetime.timezone.utc)
 print(colored('\nMission Complete', 'green'))
 
-countdown(stamp99, stamp0)
+countdown(stamp99, stamp00)
