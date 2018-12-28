@@ -72,6 +72,7 @@ def countdown(new, old):
 
 def add_location(location_list):
     stamp1 = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)
 
     def_loco = pd.read_sql('universe_stations_temp', con=engine)
 
@@ -121,6 +122,8 @@ def add_location(location_list):
             df['pos_type'] = tag_station
             df['location_id'] = location_id
             df['ACL'] = True
+            df['lastupdate'] = now
+            print('ACL OK')
         else:
             if res.status == 403:
                 df = {}
@@ -128,7 +131,8 @@ def add_location(location_list):
                 df['pos_type'] = tag_station
                 df['ACL'] = False
                 df = pd.DataFrame.from_dict([df])
-                print('ACL updated')
+                df['lastupdate'] = now
+                print('ACL denied')
             else:
                 print('OMG')
 
@@ -146,6 +150,10 @@ def add_location(location_list):
             def_loc
         except NameError:
             def_loc = df
+            continue
+
+
+        df['lastupdate'] = now
         try:
             def_loc = def_loc.append(df, ignore_index=True, sort=False)
         except Exception as e:
@@ -158,25 +166,40 @@ def add_location(location_list):
 
     #  read & write
 
-    now = datetime.datetime.now(datetime.timezone.utc)
-
-    def_loc['lastupdate'] = now
 
     if before > 0:
-        def_loc = def_loc.append(def_loco, ignore_index=True, sort=False)
+        df_new = def_loco.append(def_loc, ignore_index=True, sort=False)
 
-    def_loc = def_loc.drop_duplicates(subset='location_id')
+
+    df = df_new.drop_duplicates(subset='location_id')
+    after = len(df.index)
 
     # def_loc.drop_duplicates()
     # print('hehe')
+    tablename = 'universe_stations_temp'
+    stampin = datetime.datetime.now(datetime.timezone.utc)
+    conn, c = lighter()
+    c.execute('TRUNCATE ONLY %s' % tablename)
+    conn.commit()
+    print('TRUNCATED')
 
-    def_loc.to_sql('universe_stations_temp', con=engine, index=False, if_exists='replace',
-                   dtype={'lastupdate': tp.TIMESTAMP(timezone=True)
-                          })
+    try:
+        del output
+    except:
+        pass
+    output = io.StringIO()
+    df.to_csv(output, sep='\t', header=False, index=False)
+    output.seek(0)
+    # contents = output.getvalue()
+    c.copy_from(output, tablename, null="")  # null values become ''
+    conn.commit()
+    conn.close()
+    c.close()
+    stampout = datetime.datetime.now(datetime.timezone.utc)
+    print('insert completed')
+    countdown(stampout, stampin)
 
     # print('baba')
-
-    after = len(def_loc.index)
 
     print(colored('{} new records in universe_stations_temp'.format(after - before), 'green'))
     stamp3 = datetime.datetime.now(datetime.timezone.utc)
@@ -1133,13 +1156,14 @@ if get_regional_pub_contracts is True:
 
         location_list_old = def_loco['location_id'].tolist()
 
-        new = list(set(location_list) - set(location_list))
+        s = set(location_list_old)
+        new = [x for x in location_list if x not in s]
 
         print('found {} new location'.format(len(new)))
 
         if len(new) > 0:
+            add_location(new)
 
-            add_location(location_list)
         else:
             print('station not likely changed')
 
