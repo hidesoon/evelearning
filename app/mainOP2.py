@@ -3,19 +3,17 @@ import io
 import json
 import re
 import time
-from concurrent.futures import as_completed, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
-import psycopg2
 import requests
-from esipy import App
-from esipy import EsiClient
-from esipy import EsiSecurity
-from requests_futures.sessions import FuturesSession
 from sqlalchemy import create_engine
 from sqlalchemy import types as tp
-from termcolor import colored
 
+import psycopg2
+from esipy import App, EsiClient, EsiSecurity
+from requests_futures.sessions import FuturesSession
+from termcolor import colored
 
 # import grequests as grequests
 
@@ -180,7 +178,7 @@ def add_location(location_list):
     stampin = datetime.datetime.now(datetime.timezone.utc)
     conn, c = lighter()
     c.execute('TRUNCATE ONLY %s' % tablename)
-    conn.commit()
+    # conn.commit()
     print('TRUNCATED')
 
     try:
@@ -339,6 +337,8 @@ if get_type_id is True:
 
     # get the list from db
     tablename = 'universe_type_ids'
+    conn, c = lighter()
+
     c.execute('SELECT type_id from %s' % tablename)
     list_typeid_db = c.fetchall()
     list_old = list()
@@ -860,8 +860,7 @@ if get_coop is True:
         # contents = output.getvalue()
         c.copy_from(output, tablename, null="")  # null values become ''
         conn.commit()
-        conn.close()
-        c.close()
+
         stampout = datetime.datetime.now(datetime.timezone.utc)
         print('insert completed')
         countdown(stampout, stampin)
@@ -887,6 +886,8 @@ if get_coop is True:
         print('insert used:')
         countdown(stamp4, stamp1)
         del df, df_all_corps, dfs
+        conn.close()
+        c.close()
     else:
         print('dont too hurry :)')
 
@@ -909,6 +910,7 @@ if get_tran_record is True:
     res = json.loads(res.raw)
     cols = list(res[0].keys())
     tablename = 'tad_wal_tran'
+    conn, c = lighter()
     c.execute('select count(*) from %s' % (tablename))
     before = c.fetchone()[0]
 
@@ -991,12 +993,21 @@ if get_regional_pub_contracts is True:
         region_ids = [
             10000005,  # Detorid
             10000012,  # curse
-            # 10000061,  # Tenerifis
+            # 10000061,  # Tenerifisá
             # 10000009,  # Insmother
             # 10000025,  # Immensea
             10000006,  # Wicked Creek
             10000008,  # Scalding Pass
         ]
+
+        # region_ids = [
+        #     10000058,  # fountain
+        #     10000060,  # delve
+        #     10000050 # querious
+        #
+        # ]
+
+
         try:
             del df
             del dfs
@@ -1667,7 +1678,6 @@ if get_reg_orders is True:
         stampin = datetime.datetime.now(datetime.timezone.utc)
         conn, c = lighter()
         c.execute('TRUNCATE ONLY %s' % tablename)
-        conn.commit()
         print('TRUNCATED')
 
         try:
@@ -2070,7 +2080,6 @@ if get_markets_region_id_types is True:
         stampin = datetime.datetime.now(datetime.timezone.utc)
         conn, c = lighter()
         c.execute('TRUNCATE ONLY %s' % tablename)
-        conn.commit()
         print('TRUNCATED')
 
         try:
@@ -2430,7 +2439,6 @@ if get_markets_region_id_types is True:
         countdown(stamp2, stamp1)
     else:
         print('not yet updated in real world')
-
 
 # %% start to analysis
 def ana():

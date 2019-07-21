@@ -5,7 +5,7 @@ from esipy import App
 from esipy import EsiClient
 from esipy import EsiSecurity
 
-app = App.create(url="https://esi.tech.ccp.is/latest/swagger.json?datasource=tranquility")
+app = App.create(url="https://esi.evetech.net/latest/swagger.json?datasource=tranquility")
 
 # replace the redirect_uri, client_id and secret_key values
 # with the values you get from the STEP 1 !
@@ -34,7 +34,7 @@ for i in sscp:
     scopeslist.append(i)
 
 # this print a URL where we can log in
-print(security.get_auth_uri(scopes=scopeslist))
+print(security.get_auth_uri(scopes=scopeslist,state='here'))
 print("please copy your code and paste here\n")
 authcode = input()
 
